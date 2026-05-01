@@ -10,13 +10,19 @@
 #include <math.h>
 #include "esp_timer.h"
 
-#define C_BG       lv_color_hex(0x070b14)
+/* ISO 2575 / premium cluster palette
+ *   BG    : near-black (saf siyah RGB panel artifact'i çağırır)
+ *   FG    : cool-white (Audi/BMW signature)
+ *   AMBER : warm amber (BMW/Porsche standard #FFB400)
+ *   RED   : danger ONLY (engine/brake/oil/coolant/airbag)
+ *   GREEN : info/active (turn signal, low_beam) */
+#define C_BG       lv_color_hex(0x0a0e14)   /* was 0x070b14 — Audi-style near-black */
 #define C_PANEL    lv_color_hex(0x0d1424)
 #define C_FG       lv_color_hex(0xeef4fb)
 #define C_DIM      lv_color_hex(0x4a5568)
 #define C_RED      lv_color_hex(0xff2030)
 #define C_GREEN    lv_color_hex(0x22c55e)
-#define C_AMBER    lv_color_hex(0xffaa00)
+#define C_AMBER    lv_color_hex(0xffb400)   /* was 0xffaa00 — BMW/Porsche warm amber */
 #define C_BLUE     lv_color_hex(0x4488ff)
 #define C_ACCENT   lv_color_hex(0x00d4ff)
 #define C_RING     lv_color_hex(0x1c2436)
@@ -112,11 +118,11 @@ static lv_obj_t *ic_engine, *ic_battery, *ic_oil, *ic_coolant, *ic_fuel_low;
  *   Outer rim 134-140  : minor + major tick çizgileri
  *   r_mod=-30, w=40    : outer=110, inner=70, center=90 — backplate / color bands / arc fill
  *
- * Custom label'lar radius=90'da (bandın gerçek merkezi). Auto-label'lar gizli (text_opa=0).
- *
- * RPM: 5 color band her zaman tam görünür. Speed: arc fill 0→value büyür.
- *
- * Reveal: needle bir sayıyı geçince C_LBL_DIM → C_LBL_BRIGHT. */
+ * NOT: A1 (lv_meter snapshot cache) denendi ama LVGL heap (128KB) snapshot
+ * boyutunu (280×280×4 = 313KB) karşılayamadı, NULL döndü, ekran karardı.
+ * Düzgün uygulamak için ya LV_MEM_CUSTOM=y + PSRAM-aware allocator gerekir,
+ * ya da heap_caps_malloc(SPIRAM) ile manuel buffer + lv_canvas. İleri tarihe
+ * ertelendi — şimdilik tek lv_meter pattern kullanılıyor. */
 static lv_obj_t *make_meter(int cx, int cy, int size,
                             int v_min, int v_max,
                             int n_majors, int n_minor_per_major,
@@ -135,42 +141,33 @@ static lv_obj_t *make_meter(int cx, int cy, int size,
     lv_obj_set_style_outline_width(m, 0, 0);
     lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    /* Auto label'ları gizle — bunun yerine custom lv_label widget'ları kullanılacak.
-     * text_opa LV_PART_TICKS sadece label rendering'i etkiler, tick LİNE'larına dokunmaz. */
     lv_obj_set_style_text_opa(m, LV_OPA_TRANSP, LV_PART_TICKS);
     lv_obj_set_style_text_font(m, &lv_font_montserrat_18, LV_PART_TICKS);
 
-    /* Görünür ölçek: tick + label (her zaman v_min..v_max aralığı, label için) */
     lv_meter_scale_t *sc_visual = lv_meter_add_scale(m);
     int total_minor = (n_majors - 1) * n_minor_per_major + 1;
     lv_meter_set_scale_ticks(m, sc_visual, total_minor, 2, 6, C_DIM);
     lv_meter_set_scale_major_ticks(m, sc_visual, n_minor_per_major, 4, 6, C_TICK_LBL, 24);
     lv_meter_set_scale_range(m, sc_visual, v_min, v_max, 270, 135);
 
-    /* Smooth ölçek (smooth_factor>1) — needle/bands burada hareket eder */
     lv_meter_scale_t *sc_smooth = sc_visual;
     int smin = v_min, smax = v_max;
     if (smooth_factor > 1) {
         sc_smooth = lv_meter_add_scale(m);
-        lv_meter_set_scale_ticks(m, sc_smooth, 0, 0, 0, C_DIM);  /* görünmez */
+        lv_meter_set_scale_ticks(m, sc_smooth, 0, 0, 0, C_DIM);
         smin = v_min * smooth_factor;
         smax = v_max * smooth_factor;
         lv_meter_set_scale_range(m, sc_smooth, smin, smax, 270, 135);
     }
 
-    /* 1) Label backplate — center=110, w=40 → spans 90-130. */
     lv_meter_indicator_t *bp = lv_meter_add_arc(m, sc_smooth, 40, C_BACKPLATE, -30);
     lv_meter_set_indicator_start_value(m, bp, smin);
     lv_meter_set_indicator_end_value(m, bp, smax);
 
     if (with_rpm_bands) {
-        /* 2a) RPM: 5 sabit color band — full range, her zaman tam görünür */
         struct { int from, to; uint32_t color; } bands[] = {
-            { 0,  20, 0x22c55e },  /* yeşil — idle/eco */
-            { 20, 40, 0x84cc16 },  /* lime — normal */
-            { 40, 50, 0xeab308 },  /* sarı — orta yük */
-            { 50, 70, 0xf97316 },  /* turuncu — yüksek */
-            { 70, 90, 0xff2030 },  /* kırmızı — redline */
+            { 0,  20, 0x22c55e }, { 20, 40, 0x84cc16 }, { 40, 50, 0xeab308 },
+            { 50, 70, 0xf97316 }, { 70, 90, 0xff2030 },
         };
         int n = sizeof(bands) / sizeof(bands[0]);
         for (int i = 0; i < n; i++) {
@@ -179,16 +176,14 @@ static lv_obj_t *make_meter(int cx, int cy, int size,
             lv_meter_set_indicator_start_value(m, band, bands[i].from);
             lv_meter_set_indicator_end_value(m, band, bands[i].to);
         }
-        if (ret_arc_ind) *ret_arc_ind = NULL;  /* RPM'de dinamik arc yok */
+        if (ret_arc_ind) *ret_arc_ind = NULL;
     } else {
-        /* 2b) Speed arc fill — center=110, w=40; start=0, end=value */
         lv_meter_indicator_t *arc = lv_meter_add_arc(m, sc_smooth, 40, arc_col, -30);
         lv_meter_set_indicator_start_value(m, arc, smin);
         lv_meter_set_indicator_end_value(m, arc, smin);
         if (ret_arc_ind) *ret_arc_ind = arc;
     }
 
-    /* 3) İğne — en son eklenir, en üstte çizilir */
     *ret_needle = lv_meter_add_needle_line(m, sc_smooth, 4, lv_color_hex(0xffffff), -10);
     lv_meter_set_indicator_value(m, *ret_needle, smin);
 
@@ -296,12 +291,16 @@ void ui_build(void)
     lv_label_set_text(u2, "km/h");
     lv_obj_align_to(u2, meter_speed, LV_ALIGN_CENTER, 0, 50);
 
-    /* Anlık hız sayısı km/h yazısının ALTINDA — iğne alanından bağımsız */
+    /* Anlık hız sayısı km/h yazısının ALTINDA — iğne alanından bağımsız.
+     * Sabit 110px genişlik + center-align: 0/45/240 farklı uzunlukta olsa da
+     * label "dans etmiyor", hep aynı yerde kalıyor. */
     lbl_speed_val = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_speed_val, C_FG, 0);
     lv_obj_set_style_text_font(lbl_speed_val, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_align(lbl_speed_val, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(lbl_speed_val, 110);
     lv_label_set_text(lbl_speed_val, "0");
-    lv_obj_align_to(lbl_speed_val, u2, LV_ALIGN_OUT_BOTTOM_MID, -10, 6);
+    lv_obj_align_to(lbl_speed_val, u2, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
 
     /* Orta: Vites */
     lv_obj_t *gb = lv_obj_create(scr);
@@ -356,9 +355,13 @@ void ui_build(void)
     lv_obj_set_style_bg_color(bar_fuel, C_RING, 0);
     lv_obj_set_style_bg_color(bar_fuel, C_GREEN, LV_PART_INDICATOR);
 
+    /* fuel %: sabit 50px width + right-align → 0%/12%/100% farklı uzunlukta
+     * olsa da sağ kenar sabit, etiket dans etmiyor */
     lbl_fuel_pct = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_fuel_pct, C_FG, 0);
     lv_obj_set_style_text_font(lbl_fuel_pct, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_align(lbl_fuel_pct, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(lbl_fuel_pct, 50);
     lv_label_set_text(lbl_fuel_pct, "100%");
     lv_obj_set_pos(lbl_fuel_pct, 200, by);
 
@@ -375,9 +378,12 @@ void ui_build(void)
     lv_obj_set_style_bg_color(bar_temp, C_RING, 0);
     lv_obj_set_style_bg_color(bar_temp, C_AMBER, LV_PART_INDICATOR);
 
+    /* temp: sabit 50px right-align → -40C/0C/150C arasında label sabit kalır */
     lbl_temp_val = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_temp_val, C_FG, 0);
     lv_obj_set_style_text_font(lbl_temp_val, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_align(lbl_temp_val, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(lbl_temp_val, 50);
     lv_label_set_text(lbl_temp_val, "0C");
     lv_obj_set_pos(lbl_temp_val, 720, by);
 
@@ -472,8 +478,8 @@ void ui_refresh(void)
     if (s.rpm > 9999)  s.rpm = 9999;
 
     /* Direct set — animasyon yok, sadece değer değişince güncelle */
-    static int prev_speed = -1, prev_rpm = -1, prev_fuel = -1, prev_temp = -200;
-    static int  prev_total_km = -1;
+    static int      prev_speed = -1, prev_rpm = -1, prev_fuel = -1, prev_temp = -200;
+    static uint32_t prev_total_km = (uint32_t)-1;
 
     if (s.speed != prev_speed) { apply_speed(s.speed); prev_speed = s.speed; }
     if (s.rpm   != prev_rpm)   { apply_rpm(s.rpm);     prev_rpm   = s.rpm; }
@@ -503,25 +509,26 @@ void ui_refresh(void)
     lv_obj_set_style_text_color(lbl_gear, gc, 0);
 
     if (s.total_km != prev_total_km) {
-        snprintf(buf, sizeof(buf), "%d", s.total_km);
+        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s.total_km);
         lv_label_set_text(lbl_km, buf);
         prev_total_km = s.total_km;
     }
 
     /* Trip computer — değişen alan başına lazy update */
-    static int prev_trip_m = -1, prev_trip_sec = -1;
-    static int prev_inst_x10 = -1, prev_range = -1;
+    static uint32_t prev_trip_m = (uint32_t)-1, prev_trip_sec = (uint32_t)-1;
+    static int      prev_inst_x10 = -1, prev_range = -1;
 
     if (s.trip_m != prev_trip_m) {
-        snprintf(buf, sizeof(buf), "%d.%01d km",
-                 s.trip_m / 1000, (s.trip_m % 1000) / 100);
+        snprintf(buf, sizeof(buf), "%lu.%01lu km",
+                 (unsigned long)(s.trip_m / 1000),
+                 (unsigned long)((s.trip_m % 1000) / 100));
         lv_label_set_text(lbl_trip_km, buf);
         prev_trip_m = s.trip_m;
     }
     if (s.trip_seconds != prev_trip_sec) {
-        int mm = s.trip_seconds / 60;
-        int ss = s.trip_seconds % 60;
-        snprintf(buf, sizeof(buf), "%02d:%02d", mm, ss);
+        unsigned mm = s.trip_seconds / 60;
+        unsigned ss = s.trip_seconds % 60;
+        snprintf(buf, sizeof(buf), "%02u:%02u", mm, ss);
         lv_label_set_text(lbl_trip_time, buf);
         prev_trip_sec = s.trip_seconds;
     }

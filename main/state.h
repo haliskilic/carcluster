@@ -6,12 +6,12 @@
 
 typedef struct {
     /* Analog */
-    int speed;          /* km/h, 0..999 (4 hane) */
-    int rpm;            /* 0..9999 (4 hane) */
-    int fuel;           /* %, 0..100 */
-    int temp;           /* °C, -40..150 */
-    int total_km;
-    char gear;          /* P R N D 1..6 */
+    int      speed;     /* km/h, 0..999 (4 hane) */
+    int      rpm;       /* 0..9999 (4 hane) */
+    int      fuel;      /* %, 0..100 */
+    int      temp;      /* °C, -40..150 */
+    uint32_t total_km;  /* unsigned: int max=2.1B; demo @30fps int aşar 100 günde */
+    char     gear;      /* P R N D 1..6 */
 
     /* Status (yeşil/mavi) */
     bool left_blink;
@@ -35,12 +35,12 @@ typedef struct {
 
     /* Trip computer (trip.c tarafından 1 Hz güncellenir).
      * Fixed-point ×10: avg_l100_x10=64 → 6.4 L/100km */
-    int  trip_m;            /* trip mesafesi, metre */
-    int  trip_seconds;      /* trip süresi, saniye */
-    int  avg_speed;         /* trip ortalama hızı, km/h */
-    int  inst_l100_x10;     /* anlık tüketim ×10 (sentetik, demo) */
-    int  avg_l100_x10;      /* ortalama tüketim ×10 */
-    int  range_km;          /* tahmini menzil, km */
+    uint32_t trip_m;          /* trip mesafesi, metre — int taşardı 2150km'de */
+    uint32_t trip_seconds;    /* trip süresi, saniye */
+    int      avg_speed;       /* trip ortalama hızı, km/h */
+    int      inst_l100_x10;   /* anlık tüketim ×10 (sentetik, demo) */
+    int      avg_l100_x10;    /* ortalama tüketim ×10 */
+    int      range_km;        /* tahmini menzil, km */
 } cluster_state_t;
 
 extern cluster_state_t g_state;

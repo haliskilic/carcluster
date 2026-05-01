@@ -32,6 +32,29 @@ static void wait_frame(void)
 
 static void demo_loop_task(void *arg)
 {
+    /* Boot fast sweep (~840 ms) — needle 0→240→0 + RPM 800→9200→800.
+     * icons.c'deki bulb-check (1200 ms tüm telltale ON) ile çakışır:
+     * sweep biterken telltale'ler de söner ve normal mod'a geçilir. */
+    for (int v = 0; v <= 240; v += 12) {
+        state_lock();
+        g_state.speed = v;
+        g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
+        g_state.gear  = 'P';
+        state_unlock();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    for (int v = 240; v >= 0; v -= 12) {
+        state_lock();
+        g_state.speed = v;
+        g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
+        state_unlock();
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    state_lock();
+    g_state.speed = 0;
+    g_state.rpm   = 800;
+    state_unlock();
+
     while (1) {
         /* İvme: ilk 60 frame (~2 sn) sol sinyal — şerit değişikliği simülasyonu */
         for (int v = 0; v <= 240; v++) {

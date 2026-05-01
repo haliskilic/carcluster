@@ -40,10 +40,13 @@ static IRAM_ATTR bool on_vsync(esp_lcd_panel_handle_t panel,
     return hp == pdTRUE;
 }
 
+/* flush_cb: lv_timer_handler içinden çağrılır → s_lvgl_mutex zaten tutulur
+ * (lvgl_task içeride mutex altında lv_timer_handler_run_in_period çağırır).
+ * Yani burada açıkça lock almaya gerek yok. */
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color)
 {
     /* Bloksuz — VSYNC bekleme yok. Panel num_fbs=2 + bounce buffer ile
-     * kendi swap'ı yönetir, tearing yok (test edildi). */
+     * kendi swap'ı yönetir, tearing yok (12 MHz PCLK'da test edildi). */
     esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
                               area->x2 + 1, area->y2 + 1, color);
     s_flush_count++;
@@ -68,6 +71,10 @@ void lvgl_port_init(void)
 {
     s_panel = board_get_panel();
     s_lvgl_mutex = xSemaphoreCreateMutex();
+    if (!s_lvgl_mutex) {
+        ESP_LOGE(TAG, "lvgl mutex create failed");
+        abort();
+    }
 
     esp_lcd_rgb_panel_event_callbacks_t cbs = { .on_vsync = on_vsync };
     esp_lcd_rgb_panel_register_event_callbacks(s_panel, &cbs, NULL);
@@ -79,6 +86,11 @@ void lvgl_port_init(void)
                                       MALLOC_CAP_SPIRAM);
     lv_color_t *b2 = heap_caps_malloc(LCD_H_RES * BUF_LINES * sizeof(lv_color_t),
                                       MALLOC_CAP_SPIRAM);
+    if (!b1 || !b2) {
+        ESP_LOGE(TAG, "LVGL draw buffer alloc failed (%dx%d px)",
+                 LCD_H_RES, BUF_LINES);
+        abort();
+    }
     lv_disp_draw_buf_init(&draw_buf, b1, b2, LCD_H_RES * BUF_LINES);
 
     static lv_disp_drv_t drv;

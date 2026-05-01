@@ -38,9 +38,19 @@ uint32_t persist_load_total_km(uint32_t fallback)
 void persist_save_total_km(uint32_t km)
 {
     nvs_handle_t h;
-    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_set_u32(h, KEY_TOTAL_KM, km);
-    nvs_commit(h);
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open: %s", esp_err_to_name(err));
+        return;
+    }
+    err = nvs_set_u32(h, KEY_TOTAL_KM, km);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_set_u32: %s", esp_err_to_name(err));
+        nvs_close(h);
+        return;
+    }
+    err = nvs_commit(h);
+    if (err != ESP_OK) ESP_LOGW(TAG, "nvs_commit: %s", esp_err_to_name(err));
     nvs_close(h);
 }
 
@@ -51,7 +61,7 @@ static void autosave_task(void *arg)
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(AUTOSAVE_MS));
         state_lock();
-        uint32_t cur = (uint32_t)g_state.total_km;
+        uint32_t cur = g_state.total_km;
         state_unlock();
         if (cur != last_saved) {
             persist_save_total_km(cur);

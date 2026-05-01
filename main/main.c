@@ -20,6 +20,10 @@ volatile TaskHandle_t g_ui_task   = NULL;
 void state_init(void)
 {
     g_state_mutex = xSemaphoreCreateMutex();
+    if (!g_state_mutex) {
+        ESP_LOGE(TAG, "state mutex create failed");
+        abort();
+    }
 }
 
 static void ui_refresh_task(void *arg)
@@ -41,7 +45,7 @@ void app_main(void)
 
     /* NVS persistence — total_km'i yükle, autosave task'ını başlat */
     persist_init();
-    g_state.total_km = (int)persist_load_total_km(12345);
+    g_state.total_km = persist_load_total_km(12345);
 
     board_init();
 
