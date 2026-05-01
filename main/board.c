@@ -11,7 +11,10 @@ static const char *TAG = "board";
 #define PIN_VSYNC          3
 #define PIN_DE             5
 #define PIN_PCLK           7
-#define LCD_PIXEL_CLOCK_HZ (12 * 1000 * 1000)
+/* PCLK 16 MHz: Waveshare resmi + community-proven (ESPHome, paulhamsh, iamfaraz).
+ * Bounce buffer + bb_invalidate_cache + same-core LVGL kombinasyonuyla
+ * 800×484×~52Hz tear-free scan (Espressif FAQ + benchmark doğrular). */
+#define LCD_PIXEL_CLOCK_HZ (16 * 1000 * 1000)
 
 #define I2C_PORT           I2C_NUM_0
 #define PIN_I2C_SCL        9
@@ -80,13 +83,19 @@ void board_init(void)
         .timings = {
             .pclk_hz = LCD_PIXEL_CLOCK_HZ,
             .h_res = LCD_H_RES, .v_res = LCD_V_RES,
-            /* Minimum porches — panel scan total piksel azalır → FPS yükselir.
-             * 12MHz / (803 × 483) ≈ 31 fps (önceki 29 fps'ten) */
-            .hsync_pulse_width = 1, .hsync_back_porch = 4, .hsync_front_porch = 4,
-            .vsync_pulse_width = 1, .vsync_back_porch = 4, .vsync_front_porch = 4,
+            /* Waveshare/ESPHome community-proven porches @ 16 MHz:
+             * H = pulse 4, back 8,  front 8  → total 820 px
+             * V = pulse 4, back 16, front 16 → total 516 lines
+             * 16M / (820 × 516) ≈ 38 Hz panel scan, signal integrity sağlam. */
+            .hsync_pulse_width = 4, .hsync_back_porch = 8,  .hsync_front_porch = 8,
+            .vsync_pulse_width = 4, .vsync_back_porch = 16, .vsync_front_porch = 16,
             .flags.pclk_active_neg = 1,
         },
         .flags.fb_in_psram = 1,
+        /* Bounce buffer mode: PSRAM contention'ı azaltır, yüksek PCLK headroom.
+         * bb_invalidate_cache: bounce buffer DMA okumadan önce cache invalidate
+         * → CPU PSRAM'e yazdığı veri DMA'ya temiz görünür (Espressif gerekli). */
+        .flags.bb_invalidate_cache = 1,
     };
     ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&cfg, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
