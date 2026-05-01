@@ -1,5 +1,6 @@
 #include "icons.h"
 #include <string.h>
+#include <stdlib.h>
 
 /* Renkler */
 #define C_RED       lv_color_hex(0xff2030)
@@ -163,8 +164,33 @@ static void draw_for(lv_obj_t *target, icon_id_t id, lv_color_t col)
     }
 }
 
-/* Optimize: container içinde 2 child grup — inactive (DIM) ve active (renkli).
- * icon_set_active sadece show/hide yapar, malloc trafiği YOK. */
+/* Mimari:
+ *   Her icon container'ında iki çocuk var: inactive (DIM) ALWAYS görünür,
+ *   active (canlı renk) opacity 0..255 arasında modülasyonlu üstüne biner.
+ *   - opa=0   : sadece inactive görünür (OFF)
+ *   - opa=255 : active tam kaplar (ON)
+ *   - opa~ara : blend (PULSE)
+ *
+ *   Tek bir periyodik lv_timer (50 ms) tüm icon'ları senkron günceller.
+ *   Tüm sinyaller sync'd: dörtlü çakar, çift kritik uyarı aynı fazda pulse'lar. */
+
+#define MAX_ICONS 16
+typedef struct {
+    lv_obj_t   *active_layer;
+    icon_mode_t mode;
+    uint8_t     last_opa;     /* gereksiz invalidate'i atlamak için cache */
+} icon_info_t;
+
+static lv_obj_t  *all_icons[MAX_ICONS];
+static int        n_icons = 0;
+static lv_timer_t *anim_timer = NULL;
+static uint32_t   anim_t0_ms = 0;
+#define BOOT_CHECK_MS  2000
+
+static icon_info_t *icon_info(lv_obj_t *icon)
+{
+    return (icon_info_t *)lv_obj_get_user_data(icon);
+}
 
 lv_obj_t *icon_create(lv_obj_t *parent, icon_id_t id, int x, int y)
 {
@@ -177,7 +203,7 @@ lv_obj_t *icon_create(lv_obj_t *parent, icon_id_t id, int x, int y)
     lv_obj_set_style_radius(c, 8, 0);
     lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    /* Inactive layer (DIM rengi) — başlangıçta görünür */
+    /* Inactive layer (DIM) — daima görünür */
     lv_obj_t *inactive = lv_obj_create(c);
     lv_obj_remove_style_all(inactive);
     lv_obj_set_size(inactive, ICON_SZ, ICON_SZ);
@@ -186,30 +212,73 @@ lv_obj_t *icon_create(lv_obj_t *parent, icon_id_t id, int x, int y)
     lv_obj_clear_flag(inactive, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     draw_for(inactive, id, C_DIM);
 
-    /* Active layer (canlı renk) — başlangıçta gizli */
+    /* Active layer (canlı renk) — opa ile modüle edilir, HIDDEN değil */
     lv_obj_t *active = lv_obj_create(c);
     lv_obj_remove_style_all(active);
     lv_obj_set_size(active, ICON_SZ, ICON_SZ);
     lv_obj_set_pos(active, 0, 0);
     lv_obj_set_style_bg_opa(active, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_opa(active, 0, 0);   /* başta görünmez */
     lv_obj_clear_flag(active, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(active, LV_OBJ_FLAG_HIDDEN);
     draw_for(active, id, icon_color(id));
 
-    /* user_data: id + active layer ptr */
-    lv_obj_set_user_data(c, active);
+    icon_info_t *info = malloc(sizeof(icon_info_t));
+    info->active_layer = active;
+    info->mode = ICON_MODE_OFF;
+    info->last_opa = 0;
+    lv_obj_set_user_data(c, info);
+
+    if (n_icons < MAX_ICONS) all_icons[n_icons++] = c;
     return c;
 }
 
+void icon_set_mode(lv_obj_t *icon, icon_mode_t mode)
+{
+    icon_info(icon)->mode = mode;
+}
+
+/* Geriye dönük uyumluluk: bool → ON/OFF mode */
 void icon_set_active(lv_obj_t *icon, bool active)
 {
-    lv_obj_t *inactive = lv_obj_get_child(icon, 0);
-    lv_obj_t *active_layer = lv_obj_get_user_data(icon);
-    if (active) {
-        lv_obj_add_flag(inactive,    LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(active_layer, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_clear_flag(inactive,    LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(active_layer, LV_OBJ_FLAG_HIDDEN);
+    icon_set_mode(icon, active ? ICON_MODE_ON : ICON_MODE_OFF);
+}
+
+static void anim_tick_cb(lv_timer_t *t)
+{
+    (void)t;
+    uint32_t now = lv_tick_get();
+    if (anim_t0_ms == 0) anim_t0_ms = now;
+    bool boot_check = (now - anim_t0_ms) < BOOT_CHECK_MS;
+
+    /* 2 Hz blink — her 250 ms toggle */
+    bool blink_on = ((now / 250) & 1) == 0;
+
+    /* 1 Hz triangular pulse: 0..1000 ms, opa 90..255 */
+    uint32_t ph = now % 1000;
+    uint32_t up = ph < 500 ? ph : (1000 - ph);   /* 0..500..0 */
+    uint8_t pulse_opa = 90 + (uint8_t)((255 - 90) * up / 500);
+
+    for (int i = 0; i < n_icons; i++) {
+        icon_info_t *info = icon_info(all_icons[i]);
+        icon_mode_t mode = boot_check ? ICON_MODE_ON : info->mode;
+        uint8_t opa;
+        switch (mode) {
+            case ICON_MODE_OFF:   opa = 0;                       break;
+            case ICON_MODE_ON:    opa = LV_OPA_COVER;            break;
+            case ICON_MODE_BLINK: opa = blink_on ? LV_OPA_COVER : 0; break;
+            case ICON_MODE_PULSE: opa = pulse_opa;               break;
+            default:              opa = 0;                       break;
+        }
+        if (opa != info->last_opa) {
+            lv_obj_set_style_opa(info->active_layer, opa, 0);
+            info->last_opa = opa;
+        }
     }
+}
+
+void icons_anim_init(void)
+{
+    if (anim_timer) return;
+    anim_t0_ms = lv_tick_get();
+    anim_timer = lv_timer_create(anim_tick_cb, 50, NULL);
 }

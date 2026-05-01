@@ -6,17 +6,21 @@
 #include "state.h"
 #include "ui.h"
 #include "demo.h"
+#include "persist.h"
+#include "trip.h"
 
 static const char *TAG = "carcluster";
 
-cluster_state_t g_state = { .gear = 'P', .total_km = 12345, .fuel = 85, .temp = 25 };
+cluster_state_t g_state = { .gear = 'P', .fuel = 75, .temp = 90 };  /* total_km NVS'ten */
 SemaphoreHandle_t g_state_mutex;
-TaskHandle_t g_demo_task = NULL;
-TaskHandle_t g_ui_task   = NULL;
+SemaphoreHandle_t g_boot_done_sem;
+volatile TaskHandle_t g_demo_task = NULL;
+volatile TaskHandle_t g_ui_task   = NULL;
 
 void state_init(void)
 {
-    g_state_mutex = xSemaphoreCreateMutex();
+    g_state_mutex   = xSemaphoreCreateMutex();
+    g_boot_done_sem = xSemaphoreCreateBinary();
 }
 
 static void ui_refresh_task(void *arg)
@@ -36,7 +40,22 @@ void app_main(void)
     ESP_LOGI(TAG, "=== carcluster boot (VSYNC-driven, phase-locked) ===");
     state_init();
 
+    /* NVS persistence — total_km'i yükle, autosave task'ını başlat */
+    persist_init();
+    g_state.total_km = (int)persist_load_total_km(12345);
+
     board_init();
+
+    /* Önce task'ları yarat — VSYNC ISR registered olmadan önce
+     * g_ui_task ve g_demo_task non-NULL olsun (race window kapalı).
+     * demo_loop_task g_boot_done_sem'i take eder, splash + sweep bitince serbest. */
+    TaskHandle_t ui_h = NULL;
+    xTaskCreatePinnedToCore(ui_refresh_task, "ui_refresh",
+                            4096, NULL, 3, &ui_h, 0);
+    g_ui_task = ui_h;
+    demo_start();
+
+    /* Şimdi LVGL + VSYNC ISR — handle'lar hazır */
     lvgl_port_init();
 
     lvgl_port_lock();
@@ -45,9 +64,15 @@ void app_main(void)
     ui_set_ip("DEMO");
     lvgl_port_unlock();
 
-    xTaskCreatePinnedToCore(ui_refresh_task, "ui_refresh",
-                            4096, NULL, 3, &g_ui_task, 0);
-    demo_start();   /* g_demo_task'ı set eder */
+    /* Boot sequence: splash overlay (1s) + fade (0.5s) + needle sweep (~1.5s).
+     * Sonunda g_boot_done_sem give → demo task uyanır. */
+    ui_start_boot_sequence();
 
-    ESP_LOGI(TAG, "Ready. VSYNC drives demo + ui_refresh.");
+    /* Persistence autosave 30 sn'de bir total_km'i NVS'e yazar */
+    persist_start_autosave();
+
+    /* Trip computer 1 Hz integrator (mesafe + süre + tüketim + range) */
+    trip_start();
+
+    ESP_LOGI(TAG, "Ready. Boot sequence running.");
 }

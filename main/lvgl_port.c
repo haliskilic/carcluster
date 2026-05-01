@@ -54,11 +54,10 @@ static void tick_cb(void *arg) { lv_tick_inc(LVGL_TICK_MS); }
 
 static void lvgl_task(void *arg)
 {
-    /* Sabit periyot — dinamik next_ms yerine 5 ms.
-     * Anim varken yeterince sık update, yoksa minimal CPU yükü. */
+    /* lv_timer_handler_run_in_period: idiomatic LVGL pattern, sabit periyot */
     while (1) {
         if (xSemaphoreTake(s_lvgl_mutex, portMAX_DELAY) == pdTRUE) {
-            lv_timer_handler();
+            lv_timer_handler_run_in_period(LVGL_PERIOD_MS);
             xSemaphoreGive(s_lvgl_mutex);
             vTaskDelay(pdMS_TO_TICKS(LVGL_PERIOD_MS));
         }

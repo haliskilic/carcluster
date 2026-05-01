@@ -6,9 +6,12 @@ idf_component_register(
         "icons.c"
         "lvgl_port.c"
         "demo.c"
+        "persist.c"
+        "trip.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         esp_lcd
         esp_psram
         driver
+        nvs_flash
 )
