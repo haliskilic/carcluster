@@ -1,10 +1,11 @@
 #include "icons.h"
 #include <string.h>
 #include <stdlib.h>
+#include "esp_log.h"
 
-/* Renkler */
+/* Renkler — ISO 2575 standardı, ui.c paletiyle eşleşir */
 #define C_RED       lv_color_hex(0xff2030)
-#define C_AMBER     lv_color_hex(0xffaa00)
+#define C_AMBER     lv_color_hex(0xffb400)   /* warm amber */
 #define C_GREEN     lv_color_hex(0x30d030)
 #define C_BLUE      lv_color_hex(0x4488ff)
 #define C_OFF       lv_color_hex(0x1a2030)
@@ -24,6 +25,16 @@ static lv_color_t icon_color(icon_id_t id)
         case ICON_FUEL_LOW:    return C_AMBER;
         default:               return C_RED;
     }
+}
+
+/* ISO/UX standardı: inactive ikon = lit color'ın ~%8 karışımı (C_OFF üzerine).
+ * Driver pozisyonu öğrensin diye asla saf invisible olmamalı; rengin ipucu
+ * verilmeli. lv_color_mix(c1, c2, ratio): c1*ratio/255 + c2*(255-ratio)/255.
+ * ratio=20 → ~%8 lit + %92 C_OFF. Red icon dim koyu kırmızı, yeşil dim koyu
+ * yeşil görünür — uniform gri yerine. */
+static lv_color_t icon_dim(icon_id_t id)
+{
+    return lv_color_mix(icon_color(id), C_OFF, 20);
 }
 
 static lv_obj_t *fill_rect(lv_obj_t *p, int x, int y, int w, int h, lv_color_t c, int radius)
@@ -185,7 +196,7 @@ static lv_obj_t  *all_icons[MAX_ICONS];
 static int        n_icons = 0;
 static lv_timer_t *anim_timer = NULL;
 static uint32_t   anim_t0_ms = 0;
-#define BOOT_CHECK_MS  2000
+#define BOOT_CHECK_MS  1200    /* Demo'nun fast sweep'iyle (~840ms) sync */
 
 static icon_info_t *icon_info(lv_obj_t *icon)
 {
@@ -210,7 +221,7 @@ lv_obj_t *icon_create(lv_obj_t *parent, icon_id_t id, int x, int y)
     lv_obj_set_pos(inactive, 0, 0);
     lv_obj_set_style_bg_opa(inactive, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(inactive, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    draw_for(inactive, id, C_DIM);
+    draw_for(inactive, id, icon_dim(id));
 
     /* Active layer (canlı renk) — opa ile modüle edilir, HIDDEN değil */
     lv_obj_t *active = lv_obj_create(c);
@@ -223,6 +234,10 @@ lv_obj_t *icon_create(lv_obj_t *parent, icon_id_t id, int x, int y)
     draw_for(active, id, icon_color(id));
 
     icon_info_t *info = malloc(sizeof(icon_info_t));
+    if (!info) {
+        ESP_LOGE("icons", "icon_info OOM (n=%d)", n_icons);
+        abort();
+    }
     info->active_layer = active;
     info->mode = ICON_MODE_OFF;
     info->last_opa = 0;
@@ -276,6 +291,8 @@ static void anim_tick_cb(lv_timer_t *t)
     }
 }
 
+/* DİKKAT: lvgl_port_lock() altında çağrılmalı (lv_timer_create LVGL state'i
+ * değiştirir). ui_build sonunda çağrılıyor → ui_build zaten lock altında. */
 void icons_anim_init(void)
 {
     if (anim_timer) return;

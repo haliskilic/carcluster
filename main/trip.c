@@ -2,6 +2,7 @@
 #include "state.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdint.h>
 
 #define TANK_LITERS  50.0f   /* sentetik depo kapasitesi */
 
@@ -61,9 +62,14 @@ static void trip_task(void *arg)
         float ref_l100  = avg_l100 > 0.5f ? avg_l100 : inst_l100;
         float range     = (ref_l100 > 0.5f) ? (remain_l * 100.0f / ref_l100) : 0.0f;
 
+        /* uint32 max: trip_m=4.29B → 4.29M km; trip_seconds=4.29B sn → 136 yıl */
+        uint32_t trip_m_u  = (trip_km > 4290000.0f) ? UINT32_MAX
+                                                    : (uint32_t)(trip_km * 1000.0f);
+        uint32_t trip_s_u  = (trip_hours > 1190000.0f) ? UINT32_MAX
+                                                       : (uint32_t)(trip_hours * 3600.0f);
         state_lock();
-        g_state.trip_m         = (int)(trip_km * 1000.0f);
-        g_state.trip_seconds   = (int)(trip_hours * 3600.0f);
+        g_state.trip_m         = trip_m_u;
+        g_state.trip_seconds   = trip_s_u;
         g_state.avg_speed      = (int)avg_speed;
         g_state.avg_l100_x10   = (int)(avg_l100 * 10.0f);
         g_state.inst_l100_x10  = (int)(inst_l100 * 10.0f);

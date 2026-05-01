@@ -1,6 +1,7 @@
 #include "board.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
 
@@ -24,12 +25,18 @@ static const char *TAG = "board";
 
 static esp_lcd_panel_handle_t s_panel;
 static uint8_t s_ch422g = 0;
+static SemaphoreHandle_t s_ch422g_mutex = NULL;
 
+/* CH422G I2C write — shadow byte + bus operasyonu mutex altında.
+ * İleride başka task (touch UI / backlight PWM) bu yazıcıya erişirse race
+ * koruma garantili. Şu anda sadece board_init kullanıyor ama defensive. */
 static void ch422g_write(uint8_t set_mask, uint8_t clr_mask)
 {
+    if (s_ch422g_mutex) xSemaphoreTake(s_ch422g_mutex, portMAX_DELAY);
     s_ch422g |=  set_mask;
     s_ch422g &= ~clr_mask;
     i2c_master_write_to_device(I2C_PORT, CH422G_ADDR_WR, &s_ch422g, 1, pdMS_TO_TICKS(100));
+    if (s_ch422g_mutex) xSemaphoreGive(s_ch422g_mutex);
 }
 
 static void i2c_init(void)
@@ -47,6 +54,11 @@ static void i2c_init(void)
 void board_init(void)
 {
     /* I2C + CH422G + LCD reset + backlight */
+    s_ch422g_mutex = xSemaphoreCreateMutex();
+    if (!s_ch422g_mutex) {
+        ESP_LOGE(TAG, "ch422g mutex create failed");
+        abort();
+    }
     i2c_init();
     ch422g_write(BIT_LCD_VDD | BIT_LCD_RST, 0);  vTaskDelay(pdMS_TO_TICKS(20));
     ch422g_write(0, BIT_LCD_RST);                 vTaskDelay(pdMS_TO_TICKS(20));
