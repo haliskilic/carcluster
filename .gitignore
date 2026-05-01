@@ -1,0 +1,19 @@
+# Build artifacts
+build/
+sdkconfig
+sdkconfig.old
+
+# Component manager
+managed_components/
+dependencies.lock
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
