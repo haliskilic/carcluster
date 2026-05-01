@@ -32,15 +32,29 @@ typedef struct {
     bool engine_warn;       /* MIL / check engine */
     bool abs_warn;          /* ABS */
     bool fuel_low_warn;     /* yakıt seviyesi düşük (otomatik veya manuel) */
+
+    /* Trip computer (trip.c tarafından 1 Hz güncellenir).
+     * Fixed-point ×10: avg_l100_x10=64 → 6.4 L/100km */
+    int  trip_m;            /* trip mesafesi, metre */
+    int  trip_seconds;      /* trip süresi, saniye */
+    int  avg_speed;         /* trip ortalama hızı, km/h */
+    int  inst_l100_x10;     /* anlık tüketim ×10 (sentetik, demo) */
+    int  avg_l100_x10;      /* ortalama tüketim ×10 */
+    int  range_km;          /* tahmini menzil, km */
 } cluster_state_t;
 
 extern cluster_state_t g_state;
 extern SemaphoreHandle_t g_state_mutex;
 
+/* Boot sequence (splash + needle sweep) bittiğinde 1 kere give edilir.
+ * demo_loop_task başlangıçta take eder → splash bitene kadar bloklanır. */
+extern SemaphoreHandle_t g_boot_done_sem;
+
 /* VSYNC tetikleyici — her panel scan başlangıcında uyandırılan task'lar.
  * lvgl_port.c (VSYNC ISR) tarafından notify edilir. */
-extern TaskHandle_t g_demo_task;
-extern TaskHandle_t g_ui_task;
+/* volatile: VSYNC ISR tarafından okunur, task'lar tarafından set edilir */
+extern volatile TaskHandle_t g_demo_task;
+extern volatile TaskHandle_t g_ui_task;
 
 void state_init(void);
 
