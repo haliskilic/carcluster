@@ -26,6 +26,20 @@ void state_init(void)
     }
 }
 
+/* board_init'i core 1'de çalışan one-shot task — RGB DMA ISR'ı kaydeden core
+ * o ISR'ı taşır. lvgl_task da core 1'de pinli (lvgl_port.c LVGL_TASK_CORE=1).
+ * Espressif resmi: aynı core üzerinde RGB ISR + LVGL → PCLK headroom artar
+ * (PSRAM contention azalır, cache locality iyileşir). */
+static SemaphoreHandle_t s_board_init_done = NULL;
+
+static void board_init_pinned(void *arg)
+{
+    (void)arg;
+    board_init();
+    xSemaphoreGive(s_board_init_done);
+    vTaskDelete(NULL);
+}
+
 static void ui_refresh_task(void *arg)
 {
     /* VSYNC notify-driven — her panel scan başlangıcında uyanır,
@@ -47,7 +61,13 @@ void app_main(void)
     persist_init();
     g_state.total_km = persist_load_total_km(12345);
 
-    board_init();
+    /* RGB panel'i core 1'de pinli task'tan başlat → ISR core 1'de kaydolur */
+    s_board_init_done = xSemaphoreCreateBinary();
+    xTaskCreatePinnedToCore(board_init_pinned, "board_init",
+                            4096, NULL, 5, NULL, 1);
+    xSemaphoreTake(s_board_init_done, portMAX_DELAY);
+    vSemaphoreDelete(s_board_init_done);
+    s_board_init_done = NULL;
 
     /* Önce task'ları yarat — VSYNC ISR registered olmadan önce
      * g_ui_task ve g_demo_task non-NULL olsun (race window kapalı). */
