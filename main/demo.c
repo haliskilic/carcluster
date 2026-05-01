@@ -32,10 +32,6 @@ static void wait_frame(void)
 
 static void demo_loop_task(void *arg)
 {
-    /* Boot sequence (splash + needle sweep) bitene kadar bekle.
-     * Bu süre boyunca state'i sadece boot_sequence_task yazar. */
-    xSemaphoreTake(g_boot_done_sem, portMAX_DELAY);
-
     while (1) {
         /* İvme: ilk 60 frame (~2 sn) sol sinyal — şerit değişikliği simülasyonu */
         for (int v = 0; v <= 240; v++) {
