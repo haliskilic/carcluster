@@ -8,19 +8,18 @@
 #include "demo.h"
 #include "persist.h"
 #include "trip.h"
+#include "cpu_meter.h"
 
 static const char *TAG = "carcluster";
 
 cluster_state_t g_state = { .gear = 'P', .fuel = 75, .temp = 90 };  /* total_km NVS'ten */
 SemaphoreHandle_t g_state_mutex;
-SemaphoreHandle_t g_boot_done_sem;
 volatile TaskHandle_t g_demo_task = NULL;
 volatile TaskHandle_t g_ui_task   = NULL;
 
 void state_init(void)
 {
-    g_state_mutex   = xSemaphoreCreateMutex();
-    g_boot_done_sem = xSemaphoreCreateBinary();
+    g_state_mutex = xSemaphoreCreateMutex();
 }
 
 static void ui_refresh_task(void *arg)
@@ -47,8 +46,7 @@ void app_main(void)
     board_init();
 
     /* Önce task'ları yarat — VSYNC ISR registered olmadan önce
-     * g_ui_task ve g_demo_task non-NULL olsun (race window kapalı).
-     * demo_loop_task g_boot_done_sem'i take eder, splash + sweep bitince serbest. */
+     * g_ui_task ve g_demo_task non-NULL olsun (race window kapalı). */
     TaskHandle_t ui_h = NULL;
     xTaskCreatePinnedToCore(ui_refresh_task, "ui_refresh",
                             4096, NULL, 3, &ui_h, 0);
@@ -64,15 +62,14 @@ void app_main(void)
     ui_set_ip("DEMO");
     lvgl_port_unlock();
 
-    /* Boot sequence: splash overlay (1s) + fade (0.5s) + needle sweep (~1.5s).
-     * Sonunda g_boot_done_sem give → demo task uyanır. */
-    ui_start_boot_sequence();
-
     /* Persistence autosave 30 sn'de bir total_km'i NVS'e yazar */
     persist_start_autosave();
 
     /* Trip computer 1 Hz integrator (mesafe + süre + tüketim + range) */
     trip_start();
 
-    ESP_LOGI(TAG, "Ready. Boot sequence running.");
+    /* CPU meter — idle hook'ları register, sampler task spawn (per-core %) */
+    cpu_meter_init();
+
+    ESP_LOGI(TAG, "Ready.");
 }

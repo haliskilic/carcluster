@@ -46,10 +46,6 @@ typedef struct {
 extern cluster_state_t g_state;
 extern SemaphoreHandle_t g_state_mutex;
 
-/* Boot sequence (splash + needle sweep) bittiğinde 1 kere give edilir.
- * demo_loop_task başlangıçta take eder → splash bitene kadar bloklanır. */
-extern SemaphoreHandle_t g_boot_done_sem;
-
 /* VSYNC tetikleyici — her panel scan başlangıcında uyandırılan task'lar.
  * lvgl_port.c (VSYNC ISR) tarafından notify edilir. */
 /* volatile: VSYNC ISR tarafından okunur, task'lar tarafından set edilir */

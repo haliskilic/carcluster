@@ -16,7 +16,7 @@ static const char *TAG = "lvgl_port";
 #define LVGL_TASK_PRIO  4
 #define LVGL_TASK_CORE  1
 #define LVGL_TASK_STACK 8192
-#define BUF_LINES       80
+#define BUF_LINES       160  /* Phase 2: 80→160 → frame başına 6→3 partial flush */
 #define LVGL_PERIOD_MS  5    /* sabit periyot — dinamik yerine */
 
 static SemaphoreHandle_t s_lvgl_mutex;

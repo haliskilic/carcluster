@@ -8,6 +8,7 @@ idf_component_register(
         "demo.c"
         "persist.c"
         "trip.c"
+        "cpu_meter.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         esp_lcd

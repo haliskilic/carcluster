@@ -2,15 +2,13 @@
 #include "state.h"
 #include "icons.h"
 #include "lvgl_port.h"
-#include "board.h"
+#include "cpu_meter.h"
 #include "lvgl.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 #define C_BG       lv_color_hex(0x070b14)
 #define C_PANEL    lv_color_hex(0x0d1424)
@@ -280,7 +278,9 @@ void ui_build(void)
     lv_obj_set_style_text_color(u1, C_DIM, 0);
     lv_obj_set_style_text_font(u1, &lv_font_montserrat_18, 0);
     lv_label_set_text(u1, "RPM x 1000");
-    lv_obj_align_to(u1, meter_rpm, LV_ALIGN_CENTER, 0, 50);
+    /* Offset 50→90: alt tick label'ları (y≈304, val 0 ve val 9) ile çakışmasın.
+     * Yeni y=330 → label spans 321-339, tick label'ları y=315'te biter (6px gap). */
+    lv_obj_align_to(u1, meter_rpm, LV_ALIGN_CENTER, 0, 90);
 
     /* Sağ: Hız kadranı (0-240, smooth_factor=1, range zaten yeterince ince) */
     meter_speed = make_meter(RX, CY, ARC_R, 0, 240, 13, 4, C_ACCENT, 1, false,
@@ -412,11 +412,13 @@ void ui_build(void)
     lbl_fps = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_fps, C_AMBER, 0);
     lv_obj_set_style_text_font(lbl_fps, &lv_font_montserrat_14, 0);
-    lv_label_set_text(lbl_fps, "R-FPS: --   DR-FPS: --");
+    lv_obj_set_style_text_align(lbl_fps, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text(lbl_fps, "R-FPS: --  DR-FPS: --  C0: --%  C1: --%");
     lv_obj_align(lbl_fps, LV_ALIGN_BOTTOM_RIGHT, -8, -4);
 
-    /* icons_anim_init() boot_sequence_task içinden, splash sonrası çağrılır →
-     * bulb-check sweep ile birlikte görünür. Burada başlatılırsa splash altında kalır. */
+    /* Telltale animasyonu — periyodik 50 ms timer, tüm icon'lar sync'd.
+     * İlk 2 sn boot check (tüm icon'lar ON) burada otomatik başlar. */
+    icons_anim_init();
 }
 
 void ui_refresh(void)
@@ -448,8 +450,10 @@ void ui_refresh(void)
         last_vsync = now_vsync;
         last_us    = now_us;
     }
-    char fbuf[40];
-    snprintf(fbuf, sizeof(fbuf), "R-FPS: %d   DR-FPS: %d", rfps_smooth, drfps_smooth);
+    char fbuf[64];
+    snprintf(fbuf, sizeof(fbuf), "R-FPS: %d  DR-FPS: %d  C0: %d%%  C1: %d%%",
+             rfps_smooth, drfps_smooth,
+             cpu_meter_get_pct(0), cpu_meter_get_pct(1));
     lv_label_set_text(lbl_fps, fbuf);
 
     state_lock();
@@ -566,114 +570,3 @@ void ui_set_ip(const char *ip)
     lv_label_set_text(lbl_ip, buf);
 }
 
-/* ============================================================
- * Boot sequence — splash + needle sweep
- * ============================================================
- * Akış:
- *   t=0       splash overlay (full screen black + brand text) görünür
- *   t=1.0s    fade-out animasyonu başlar (500ms)
- *   t=1.5s    splash silinir, icons_anim_init() → bulb-check (2s ON)
- *   t=1.5s    needle sweep 0→240 (700ms)
- *   t=2.2s    needle sweep 240→0 (700ms)
- *   t=2.9s    g_boot_done_sem give → demo task uyanır
- *   t=3.5s    icons bulb-check biter, state-driven mode'lara geçer
- *
- * Demo, demo_loop_task başlangıcında semaphore'da bekler. Sweep süresince
- * state'i sadece bu task yazar (yarış yok). */
-
-/* DİKKAT: lv_obj_set_style_opa fullscreen container'da LAYERED rendering yapar
- * → off-screen buffer + alpha blend → 800×480 RGB565 = 768KB her frame → bounce
- *   buffer bandwidth'i yetişmez → yırtılma. Bunun yerine bg_opa ve text_opa ayrı
- *   animate edilir (per-pixel alpha, off-screen YOK). */
-static void boot_anim_bg_opa_cb(void *var, int32_t v)
-{
-    lv_obj_set_style_bg_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
-}
-static void boot_anim_text_opa_cb(void *var, int32_t v)
-{
-    lv_obj_set_style_text_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
-}
-
-static void boot_sequence_task(void *arg)
-{
-    (void)arg;
-
-    /* 1) Splash overlay oluştur — siyah arka, marka adı + alt satır */
-    lvgl_port_lock();
-    lv_obj_t *scr = lv_scr_act();
-    lv_obj_t *splash = lv_obj_create(scr);
-    lv_obj_remove_style_all(splash);
-    lv_obj_set_size(splash, LCD_H_RES, LCD_V_RES);
-    lv_obj_set_pos(splash, 0, 0);
-    lv_obj_set_style_bg_color(splash, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(splash, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(splash, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *brand = lv_label_create(splash);
-    lv_label_set_text(brand, "HK");
-    lv_obj_set_style_text_font(brand, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(brand, C_ACCENT, 0);
-    lv_obj_center(brand);
-    lvgl_port_unlock();
-
-    /* 2) 700 ms göster */
-    vTaskDelay(pdMS_TO_TICKS(700));
-
-    /* 3) Hızlı yumuşak fade-out (250 ms) — bg ve text PARALEL ama AYRI animasyonlar
-     *    (style_opa kullanmıyoruz → layered rendering yok → yırtılma yok). */
-    lvgl_port_lock();
-    lv_anim_t ab;
-    lv_anim_init(&ab);
-    lv_anim_set_var(&ab, splash);
-    lv_anim_set_values(&ab, LV_OPA_COVER, LV_OPA_TRANSP);
-    lv_anim_set_time(&ab, 250);
-    lv_anim_set_exec_cb(&ab, boot_anim_bg_opa_cb);
-    lv_anim_start(&ab);
-
-    lv_anim_t at;
-    lv_anim_init(&at);
-    lv_anim_set_var(&at, brand);
-    lv_anim_set_values(&at, LV_OPA_COVER, LV_OPA_TRANSP);
-    lv_anim_set_time(&at, 250);
-    lv_anim_set_exec_cb(&at, boot_anim_text_opa_cb);
-    lv_anim_start(&at);
-    lvgl_port_unlock();
-
-    vTaskDelay(pdMS_TO_TICKS(280));   /* 250ms anim + 30ms buffer */
-
-    /* 4) Splash temizle, icon bulb-check başlat (2 sn ON) */
-    lvgl_port_lock();
-    lv_obj_del(splash);
-    icons_anim_init();
-    lvgl_port_unlock();
-
-    /* 5) Sweep 0→240 (~700ms): step 8, her adımda 24ms */
-    for (int v = 0; v <= 240; v += 8) {
-        state_lock();
-        g_state.speed = v;
-        g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
-        state_unlock();
-        vTaskDelay(pdMS_TO_TICKS(24));
-    }
-    /* 6) Sweep 240→0 (~700ms) */
-    for (int v = 240; v >= 0; v -= 8) {
-        state_lock();
-        g_state.speed = v;
-        g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
-        state_unlock();
-        vTaskDelay(pdMS_TO_TICKS(24));
-    }
-    state_lock();
-    g_state.speed = 0;
-    g_state.rpm   = 800;
-    state_unlock();
-
-    /* 7) Demo'yu uyandır */
-    xSemaphoreGive(g_boot_done_sem);
-    vTaskDelete(NULL);
-}
-
-void ui_start_boot_sequence(void)
-{
-    xTaskCreatePinnedToCore(boot_sequence_task, "boot_seq", 4096, NULL, 4, NULL, 0);
-}
