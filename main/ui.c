@@ -9,6 +9,8 @@
 #include <stdbool.h>
 #include <math.h>
 #include "esp_timer.h"
+#include "esp_log.h"
+#include "esp_heap_caps.h"
 
 /* ISO 2575 / premium cluster palette
  *   BG    : near-black (saf siyah RGB panel artifact'i çağırır)
@@ -114,23 +116,21 @@ static lv_obj_t *ic_engine, *ic_battery, *ic_oil, *ic_coolant, *ic_fuel_low;
 /* Backplate — panel arkaplanından (C_BG=0x070b14) belirgin ayrılır */
 #define C_BACKPLATE lv_color_hex(0x1f2a3a)
 
-/* Geometri (lv_draw_arc'ta `radius` arc'ın OUTER yarıçapı, inner = radius - width):
- *   Outer rim 134-140  : minor + major tick çizgileri
- *   r_mod=-30, w=40    : outer=110, inner=70, center=90 — backplate / color bands / arc fill
+/* A1 SNAPSHOT CACHE — statik gauge layer'ı bir kez render → lv_img blit.
+ * Her frame'de 5 color band + tick lines + backplate rasterize maliyeti
+ * ortadan kalkar (LVGL meter rasterize = en büyük CPU tüketici).
  *
- * NOT: A1 (lv_meter snapshot cache) denendi ama LVGL heap (128KB) snapshot
- * boyutunu (280×280×4 = 313KB) karşılayamadı, NULL döndü, ekran karardı.
- * Düzgün uygulamak için ya LV_MEM_CUSTOM=y + PSRAM-aware allocator gerekir,
- * ya da heap_caps_malloc(SPIRAM) ile manuel buffer + lv_canvas. İleri tarihe
- * ertelendi — şimdilik tek lv_meter pattern kullanılıyor. */
-static lv_obj_t *make_meter(int cx, int cy, int size,
-                            int v_min, int v_max,
-                            int n_majors, int n_minor_per_major,
-                            lv_color_t arc_col,
-                            int smooth_factor,
-                            bool with_rpm_bands,
-                            lv_meter_indicator_t **ret_arc_ind,
-                            lv_meter_indicator_t **ret_needle)
+ * Snapshot buffer LVGL heap'te değil DOĞRUDAN PSRAM'den (heap_caps_malloc
+ * + MALLOC_CAP_SPIRAM) ayrılır → LV_MEM_SIZE limiti aşılmaz.
+ * lv_snapshot_take_to_buf API caller-provided buf alır.
+ *
+ * Memory: 280×280×4 RGBA = 313KB × 2 gauge = 626KB PSRAM (8MB'den bol). */
+
+/* Statik katman — scale ticks + backplate + RPM color bands. Snapshot için. */
+static lv_obj_t *make_meter_static(int cx, int cy, int size,
+                                    int v_min, int v_max,
+                                    int n_majors, int n_minor_per_major,
+                                    int smooth_factor, bool with_rpm_bands)
 {
     lv_obj_t *m = lv_meter_create(lv_scr_act());
     lv_obj_set_size(m, size, size);
@@ -176,18 +176,90 @@ static lv_obj_t *make_meter(int cx, int cy, int size,
             lv_meter_set_indicator_start_value(m, band, bands[i].from);
             lv_meter_set_indicator_end_value(m, band, bands[i].to);
         }
-        if (ret_arc_ind) *ret_arc_ind = NULL;
-    } else {
-        lv_meter_indicator_t *arc = lv_meter_add_arc(m, sc_smooth, 40, arc_col, -30);
+    }
+    return m;
+}
+
+/* Dinamik katman — yalnızca needle (+ speed için arc fill).
+ * Smooth scale tick'siz; needle açısı için range gerekli. */
+static lv_obj_t *make_meter_dynamic(int cx, int cy, int size,
+                                     int v_min, int v_max,
+                                     lv_color_t arc_col,
+                                     int smooth_factor, bool with_rpm_bands,
+                                     lv_meter_indicator_t **ret_arc_ind,
+                                     lv_meter_indicator_t **ret_needle)
+{
+    lv_obj_t *m = lv_meter_create(lv_scr_act());
+    lv_obj_set_size(m, size, size);
+    lv_obj_set_pos(m, cx - size/2, cy - size/2);
+    lv_obj_set_style_bg_opa(m, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(m, 0, 0);
+    lv_obj_set_style_pad_all(m, 0, 0);
+    lv_obj_set_style_outline_width(m, 0, 0);
+    lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_meter_scale_t *sc = lv_meter_add_scale(m);
+    lv_meter_set_scale_ticks(m, sc, 0, 0, 0, C_DIM);
+    int sf = smooth_factor > 1 ? smooth_factor : 1;
+    int smin = v_min * sf;
+    int smax = v_max * sf;
+    lv_meter_set_scale_range(m, sc, smin, smax, 270, 135);
+
+    if (!with_rpm_bands) {
+        lv_meter_indicator_t *arc = lv_meter_add_arc(m, sc, 40, arc_col, -30);
         lv_meter_set_indicator_start_value(m, arc, smin);
         lv_meter_set_indicator_end_value(m, arc, smin);
         if (ret_arc_ind) *ret_arc_ind = arc;
+    } else {
+        if (ret_arc_ind) *ret_arc_ind = NULL;
     }
 
-    *ret_needle = lv_meter_add_needle_line(m, sc_smooth, 4, lv_color_hex(0xffffff), -10);
+    *ret_needle = lv_meter_add_needle_line(m, sc, 4, lv_color_hex(0xffffff), -10);
     lv_meter_set_indicator_value(m, *ret_needle, smin);
-
     return m;
+}
+
+/* Snapshot orchestrator: statik meter oluştur → PSRAM'de buf ayır →
+ * lv_snapshot_take_to_buf ile render → orijinali sil → lv_img olarak ekle →
+ * üstüne dinamik katman. Ret = dinamik meter (apply_speed/rpm bunu kullanır). */
+static lv_obj_t *make_meter(int cx, int cy, int size,
+                            int v_min, int v_max,
+                            int n_majors, int n_minor_per_major,
+                            lv_color_t arc_col,
+                            int smooth_factor, bool with_rpm_bands,
+                            lv_meter_indicator_t **ret_arc_ind,
+                            lv_meter_indicator_t **ret_needle)
+{
+    lv_obj_t *st = make_meter_static(cx, cy, size, v_min, v_max,
+                                      n_majors, n_minor_per_major,
+                                      smooth_factor, with_rpm_bands);
+
+    /* PSRAM'den buffer ayır — LVGL heap baypas */
+    uint32_t buf_size = lv_snapshot_buf_size_needed(st, LV_IMG_CF_TRUE_COLOR_ALPHA);
+    void *buf = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        ESP_LOGE("ui", "snapshot buf alloc failed (%lu bytes)", (unsigned long)buf_size);
+        abort();
+    }
+    /* dsc statik storage — lv_img buna ref tutar (lifetime program boyunca) */
+    static lv_img_dsc_t dsc_pool[2];
+    static int dsc_idx = 0;
+    lv_img_dsc_t *dsc = &dsc_pool[dsc_idx++];
+
+    if (lv_snapshot_take_to_buf(st, LV_IMG_CF_TRUE_COLOR_ALPHA, dsc, buf, buf_size)
+        != LV_RES_OK) {
+        ESP_LOGE("ui", "lv_snapshot_take_to_buf failed");
+        abort();
+    }
+    lv_obj_del(st);
+
+    lv_obj_t *bg = lv_img_create(lv_scr_act());
+    lv_img_set_src(bg, dsc);
+    lv_obj_set_pos(bg, cx - size/2, cy - size/2);
+
+    return make_meter_dynamic(cx, cy, size, v_min, v_max, arc_col,
+                               smooth_factor, with_rpm_bands,
+                               ret_arc_ind, ret_needle);
 }
 
 /* Custom tick label'larını meter'ın etrafına yerleştirir.
