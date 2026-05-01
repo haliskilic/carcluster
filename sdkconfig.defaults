@@ -20,8 +20,25 @@ CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
-# RGB LCD
+# === PERF Bundle (Yol A — review-driven optimizations) ===
+# Compiler -O2 (default -Og) — %5-15 CPU kazanımı
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# LVGL hot path'leri IRAM'de — render fast
+CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+
+# LVGL memcpy/memset → ESP-IDF Xtensa-optimize sürümü
+CONFIG_LV_MEMCPY_MEMSET_STD=y
+
+# FreeRTOS tick rate — pdMS_TO_TICKS doğru çözünürlük için 1ms tick
+CONFIG_FREERTOS_HZ=1000
+
+# Octal PSRAM 64-byte burst ile data cache eşleşmesi (Espressif tavsiyesi)
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# RGB LCD — flash/NVS yazımı sırasında drift önleme
 CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
+CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
 
 # Daha büyük partition (LVGL build için)
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
