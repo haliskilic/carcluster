@@ -470,7 +470,9 @@ void ui_build(void)
     lv_label_set_text(odo_lbl, "ODO");
     lv_obj_set_style_text_color(odo_lbl, C_DIM, 0);
     lv_obj_set_style_text_font(odo_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_align(odo_lbl, LV_ALIGN_BOTTOM_MID, -64, -22);
+    /* -64 → -80: ODO yazısı 1 karakter (~16px) sola, lbl_km uzun değerlerde
+     * (1M+ km) sola taştığında çakışmasın */
+    lv_obj_align(odo_lbl, LV_ALIGN_BOTTOM_MID, -80, -22);
 
     lbl_km = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_km, C_FG, 0);
