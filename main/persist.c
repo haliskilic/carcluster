@@ -10,6 +10,7 @@ static const char *TAG = "persist";
 
 #define NS            "carcluster"
 #define KEY_TOTAL_KM  "total_km"
+#define KEY_TRIP      "trip"
 #define AUTOSAVE_MS   30000   /* 30 sn — NVS wear ile UX güncelliği dengesi */
 
 /* Reset reason counter key — esp_reset_reason_t enum value (0-9) */
@@ -84,6 +85,48 @@ uint32_t persist_get_reset_counter(int reason)
     nvs_get_u32(h, key, &cnt);
     nvs_close(h);
     return cnt;
+}
+
+bool persist_load_trip(trip_persist_t *out)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t sz = sizeof(*out);
+    esp_err_t err = nvs_get_blob(h, KEY_TRIP, out, &sz);
+    nvs_close(h);
+    if (err == ESP_OK && sz == sizeof(*out)) {
+        ESP_LOGI(TAG, "loaded trip: %lu m, %lu s, %lu mL",
+                 (unsigned long)out->trip_m,
+                 (unsigned long)out->trip_seconds,
+                 (unsigned long)out->trip_fuel_ml);
+        return true;
+    }
+    return false;
+}
+
+void persist_save_trip(const trip_persist_t *t)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "trip save nvs_open: %s", esp_err_to_name(err));
+        return;
+    }
+    err = nvs_set_blob(h, KEY_TRIP, t, sizeof(*t));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "trip nvs_set_blob: %s", esp_err_to_name(err));
+        nvs_close(h);
+        return;
+    }
+    err = nvs_commit(h);
+    if (err != ESP_OK) ESP_LOGW(TAG, "trip nvs_commit: %s", esp_err_to_name(err));
+    nvs_close(h);
+}
+
+void persist_clear_trip(void)
+{
+    trip_persist_t empty = {0, 0, 0};
+    persist_save_trip(&empty);
 }
 
 static void autosave_task(void *arg)

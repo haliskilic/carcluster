@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.7.6 (Paket B: TWDT panic + reset reason + counter)
-set(PROJECT_VER "0.7.6")
+# v0.7.7 (E1: trip persist across reboot)
+set(PROJECT_VER "0.7.7")
 project(carcluster)

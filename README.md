@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.7.6** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.7.7** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -467,6 +467,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.4** | Display fix: V1.2 BL_EN-after-panel sequence reverted (datasheet ihlali ama V1.2 zorunluluğu) |
 | **v0.7.5** | Trip pause sync (Pause Demo TIME/RANGE da donar) + modal HIDDEN-pattern (perde efekti yok, single-shot render) + PROJECT_VER UI footer |
 | **v0.7.6** | Paket B: TWDT panic + critical task subscribe (lvgl/demo/ui_refresh/trip self-pet, hung task → reset). Reset reason logging + NVS counter (fault tracking). 10s WDT timeout. |
+| **v0.7.7** | E1: Trip persist across reboot — NVS blob (trip_m + trip_seconds + trip_fuel_ml). Boot'ta yüklenir, her 30 trip-saniyede save (pause'da save yok). Reset Trip butonu NVS'i de temizler. |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -486,7 +487,7 @@ git checkout v0.7.0   # belirli sürüm
 
 ### Sıradaki (yazılım)
 - ✅ **B (revize)**: TWDT panic + reset reason + counter — v0.7.6 tamamlandı
-- [ ] **E1**: Persist trip across reboot — 1-2 saat, küçük UX
+- ✅ **E1**: Trip persist across reboot — v0.7.7 tamamlandı
 - [ ] **C8 (yazılım kısmı)**: Idle sleep — state X sn değişmezse screen-off (ignition signal donanım gerek)
 - [ ] **Settings modal "About" sekmesi**: reset count breakdown göster (POWERON / PANIC / TASK_WDT / BROWNOUT / ...)
 

@@ -1,9 +1,13 @@
 #include "trip.h"
 #include "state.h"
+#include "persist.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_task_wdt.h"
+#include "esp_log.h"
 #include <stdint.h>
+
+static const char *TAG = "trip";
 
 #define TANK_LITERS  50.0f   /* sentetik depo kapasitesi */
 
@@ -21,6 +25,8 @@ void trip_reset(void)
     g_state.avg_speed     = 0;
     g_state.avg_l100_x10  = 0;
     state_unlock();
+    /* NVS'i de temizle — reboot'ta da sıfırlı başlasın */
+    persist_clear_trip();
 }
 
 /* Sentetik tüketim modeli: idle=1, cruise=4, hard accel ~12 L/100km */
@@ -40,6 +46,20 @@ static void trip_task(void *arg)
     (void)arg;
     /* TWDT subscribe — 1 Hz pet, 10s timeout, bol margin */
     esp_task_wdt_add(NULL);
+
+    /* Boot: NVS'ten yükle (E1) — trip reboot'a dayanıklı */
+    trip_persist_t loaded = {0};
+    if (persist_load_trip(&loaded)) {
+        trip_km     = loaded.trip_m / 1000.0f;
+        trip_hours  = loaded.trip_seconds / 3600.0f;
+        trip_fuel_l = loaded.trip_fuel_ml / 1000.0f;
+        ESP_LOGI(TAG, "trip restored: %.2f km, %lu sec, %.2f L",
+                 trip_km, (unsigned long)loaded.trip_seconds, trip_fuel_l);
+    }
+
+    /* Save sayacı: her 30 trip-saniyesinde NVS'e yaz (pause'da save yok) */
+    int last_saved_sec = (int)(trip_hours * 3600.0f);
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));   /* 1 Hz */
         esp_task_wdt_reset();
@@ -83,6 +103,18 @@ static void trip_task(void *arg)
         g_state.inst_l100_x10  = (int)(inst_l100 * 10.0f);
         g_state.range_km       = (int)range;
         state_unlock();
+
+        /* Periyodik NVS save (30 trip-saniye) — pause'da save yok */
+        int cur_sec = (int)trip_s_u;
+        if (cur_sec - last_saved_sec >= 30) {
+            trip_persist_t snap = {
+                .trip_m       = trip_m_u,
+                .trip_seconds = trip_s_u,
+                .trip_fuel_ml = (uint32_t)(trip_fuel_l * 1000.0f),
+            };
+            persist_save_trip(&snap);
+            last_saved_sec = cur_sec;
+        }
     }
 }
 
