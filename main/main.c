@@ -9,6 +9,7 @@
 #include "persist.h"
 #include "trip.h"
 #include "cpu_meter.h"
+#include "touch.h"
 
 static const char *TAG = "carcluster";
 
@@ -76,6 +77,9 @@ void app_main(void)
                             4096, NULL, 3, &ui_h, 0);
     g_ui_task = ui_h;
     demo_start();
+
+    /* GT911 touch (debug: minimal init only) */
+    touch_init();
 
     /* Şimdi LVGL + VSYNC ISR — handle'lar hazır */
     lvgl_port_init();
