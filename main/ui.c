@@ -758,13 +758,17 @@ static void show_settings_modal(void)
 {
     if (s_settings_modal) return;
 
-    /* Full-screen semi-transparent overlay */
+    /* HIDDEN flag ile yarat → child'lar build edilirken render YOK.
+     * Tüm hierarchy hazırlandıktan sonra single clear-flag → SINGLE
+     * invalidation → modal tek shot render. "Perde" effect ortadan kalkar. */
     s_settings_modal = lv_obj_create(lv_scr_act());
+    lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_style_all(s_settings_modal);
     lv_obj_set_size(s_settings_modal, LCD_H_RES, LCD_V_RES);
     lv_obj_set_pos(s_settings_modal, 0, 0);
-    lv_obj_set_style_bg_color(s_settings_modal, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(s_settings_modal, LV_OPA_70, 0);
+    /* Opaque overlay → LVGL alttaki gauge'ları compose etmiyor (hızlı render) */
+    lv_obj_set_style_bg_color(s_settings_modal, lv_color_hex(0x05080f), 0);
+    lv_obj_set_style_bg_opa(s_settings_modal, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_CLICKABLE);
 
@@ -836,6 +840,11 @@ static void show_settings_modal(void)
     lv_obj_set_style_text_color(ver_lbl, C_DIM, 0);
     lv_obj_set_style_text_font(ver_lbl, &lv_font_inter_14, 0);
     lv_obj_align(ver_lbl, LV_ALIGN_BOTTOM_MID, 0, -10);
+
+    /* Tüm hierarchy hazır → tek invalidation ile göster.
+     * Modal şimdi SINGLE batch'te render edilir (3 partial-flush dilimi
+     * koherent içerikle dolar; "perde" değil "tek-shot" görünür). */
+    lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void on_screen_long_press(lv_event_t *e)
