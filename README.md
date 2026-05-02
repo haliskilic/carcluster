@@ -377,9 +377,19 @@ CPU                240 MHz dual core, RGB ISR + lvgl_task aynı core (1)
 
 **Semptom**: `touch_init` içinde GPIO4'ü `GPIO_MODE_INPUT`'a çevirmek panel'i tamamen karartıyor.
 
-**Tahmin**: V1.2 board'unda GPIO4'ün belgelenmemiş bir paylaşımlı bağlantısı var (büyük olasılıkla panel power veya backlight kontrol). Schematic'te görünmüyor ama deneysel olarak kanıtlandı.
+**Schematic analizi sonrası gerçek sebep** (Waveshare V1.2 schematic'i incelendi): GPIO4 SADECE GT911 INT'e bağlı, başka hiçbir şeye değil. Black-screen sebebi büyük olasılıkla:
+- **FPC ground bounce / EMI coupling**: GT911 high-Z INT pin'inde scan switching aktivitesi, J1 (LCD FPC) ile J2 (touch FPC) arasında paylaşılan ground return üzerinden RGB data lines'a coupling yapıyor
+- **Eksik RC filter**: GT911 programming guide section 7.5 INT pin için **680Ω series + 1nF cap to GND** öneriyor; V1.2 board'unda bu yok
 
-**Workaround**: GPIO4 OUTPUT LOW olarak kalır. Polling-based touch read için INT pin gerekmez (50 Hz I2C poll status register'a). `touch.c`'de adım adım debug edilerek bulundu.
+**Yazılım workaround (current)**: GPIO4 OUTPUT LOW olarak kalır. Polling-based touch read için INT pin gerekmez. **Uyarı**: Bu yapı GT911'i scan moduna geçirmediği için touch sample rate'i düşük olabilir.
+
+**Donanım modu (önerilen)**: GT911 INT (GPIO4) ile GND arasına **1nF cap**, GPIO4 ile GT911 INT pin arasına **680Ω series resistor**. Bu RC filter EMI coupling'i bastırıyor → GPIO4'ü datasheet-uyumlu INPUT high-Z'ye çevirebilir, GT911 normal scan moduna geçer.
+
+**Datasheet uyumlu sequence** (yapılmadı — donanım modu olmadan riskli):
+```
+RST low (≥10ms) → INT output low → RST high → wait 5ms (INT still low) →
+INT to high-Z (input floating) → wait 50ms → first I2C read
+```
 
 ### Türkçe locale Xtensa toolchain crash
 
@@ -405,6 +415,24 @@ CPU                240 MHz dual core, RGB ISR + lvgl_task aynı core (1)
 **Semptom**: Demo'da yüksek RPM + tüm telltale ON sırasında reset.
 
 **Workaround**: 5V/2A USB adaptör + 470 µF bulk cap (Waveshare 4.3" sibling için belgelenen fix, V1.2'de de geçerli).
+
+### LCD power-on sequence (datasheet T2 ≥ 250ms) — v0.7.2'de düzeltildi
+
+**Sebep**: ST7262 datasheet sayfa 90 — backlight enable, ilk DCLK output'tan **min 250ms sonra** verilmeli. Önceki kod (v0.7.1 ve öncesi) BL_EN'i panel başlamadan ÖNCE açıyordu → uzun vadede panel latch-up riski.
+
+**Düzeltilen sıra (v0.7.2)**: VDD on → LCD_RST cycle → `esp_lcd_new_rgb_panel` (DCLK aktif) → 250 ms wait → BL_EN. Ekranda kısa bir kararma sonrası açılış görüyorsanız bu beklenen davranış.
+
+### Önerilen donanım modifikasyonları (V1.2 board)
+
+Schematic incelemesi sonrası bulunan eksiklikler:
+
+| Mod | Sebep | Etki |
+|---|---|---|
+| **GT911 INT RC filter**: 680Ω series + 1nF cap (GT911 INT ↔ GPIO4 arası) | Programming guide §7.5; V1.2'de eksik | EMI coupling bastırılır, GPIO4 INPUT high-Z mode'a güvenle geçilebilir |
+| **3V3 bulk cap**: 22-47 µF tantal/seramik U8 yakınında | Wi-Fi peak transient (500mA) için module'ün 10µF + 100nF yeterli değil | Brownout riski azalır |
+| **AVDD_LCD bulk**: +10 µF/25V seramik J1-AVDD'de | ST7262 80mA çekimi için marjinal | Yüksek refresh rate'de ripple azalır |
+| **Backlight bulk**: +22 µF/35V VLED+ rail'da | Backlight current 580-1000mA olabilir | Backlight ripple/flicker azalır |
+| **5V brownout supervisor** (MAX809/TPS3839) | Üst seviye brownout protection yok | Battery operation güvenli olur |
 
 ---
 
