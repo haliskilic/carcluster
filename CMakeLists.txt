@@ -1,3 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# v0.7.3 (Paket D — Inter font + needle damping + settings expansion)
+set(PROJECT_VER "0.7.3")
 project(carcluster)

@@ -10,10 +10,17 @@ idf_component_register(
         "trip.c"
         "cpu_meter.c"
         "touch.c"
-    INCLUDE_DIRS "."
+        "fonts/lv_font_inter_14.c"
+        "fonts/lv_font_inter_18.c"
+        "fonts/lv_font_inter_24.c"
+        "fonts/lv_font_inter_36.c"
+        "fonts/lv_font_inter_48.c"
+    INCLUDE_DIRS "." "fonts"
     PRIV_REQUIRES
         esp_lcd
         esp_psram
         driver
         nvs_flash
+        app_update
+        esp_app_format
 )

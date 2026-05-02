@@ -46,6 +46,10 @@ typedef struct {
 extern cluster_state_t g_state;
 extern SemaphoreHandle_t g_state_mutex;
 
+/* Demo pause flag — touch UI'dan ayarlanır, demo task her loop'ta kontrol eder.
+ * true: demo state üretmeyi durdurur, mevcut değerler ekrana kalır. */
+extern volatile bool g_demo_paused;
+
 /* VSYNC tetikleyici — her panel scan başlangıcında uyandırılan task'lar.
  * lvgl_port.c (VSYNC ISR) tarafından notify edilir. */
 /* volatile: VSYNC ISR tarafından okunur, task'lar tarafından set edilir */
