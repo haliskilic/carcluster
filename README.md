@@ -1,114 +1,460 @@
 # carcluster
 
-ESP32-S3 + 7" 800×480 RGB TFT panel için instrument cluster — araç gösterge paneli simülatörü.
+ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli (instrument cluster)** — animasyonlu telltale'ler, smooth gösterge ibreleri, trip computer, NVS-persisted odometer, GT911 dokunmatik ayar paneli.
 
-> Donanım: **Waveshare ESP32-S3-Touch-LCD-7 V1.2**
-> Yazılım: **ESP-IDF v5.3.2** + **LVGL v8.4**
+> **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
+> **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
+> **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache
+
+---
+
+## İçindekiler
+
+1. [Özellikler](#özellikler)
+2. [Donanım](#donanım)
+3. [Hızlı başlangıç](#hızlı-başlangıç)
+4. [Detaylı kurulum](#detaylı-kurulum)
+5. [Mimari](#mimari)
+6. [Modüller](#modüller)
+7. [Touch UI kullanımı](#touch-ui-kullanımı)
+8. [Konfigürasyon](#konfigürasyon)
+9. [Bilinen sorunlar / workaround'lar](#bilinen-sorunlar--workaroundlar)
+10. [Sürüm geçmişi](#sürüm-geçmişi)
+11. [Yol haritası](#yol-haritası)
+12. [Lisans](#lisans)
+
+---
 
 ## Özellikler
 
-- ISO 2575 / ISO 26262 stilinde flat tasarım gösterge paneli
-- Sol kadran: Tachometer (RPM × 1000), redline 7-9
-- Sağ kadran: Speedometer (0–240 km/h)
-- 13 adet otomotiv telltale ikonu (sinyal, far, ABS, engine, oil, coolant, battery, brake, airbag, seatbelt, fuel low, vb.)
-- Yakıt + soğutma suyu bar göstergesi
-- Vites göstergesi (P/R/N/D/1-6)
-- ODO sayacı
-- VSYNC senkronize phase-locked task pipeline
-- Tearing-free render (num_fbs=2 + bounce buffer + LVGL partial mode)
-- İçsel sürüş demo'su (60 fps state üretimi keyframe profile veya sweep)
-- R-FPS (render rate) ve DR-FPS (display rate) canlı sayaçları
+### Görsel
+- **Sol kadran**: Tachometer (RPM × 1000), 5 renkli band gradient (yeşil → lime → sarı → turuncu → kırmızı), needle smooth scale (91 pozisyon, 1500 RPM = 15 internal)
+- **Sağ kadran**: Speedometer (0–240 km/h), tek-renk arc fill (cyan accent), needle direkt değer
+- **Custom tick label'ları**: 23 toplam (10 RPM + 13 speed), needle taradığı sayılar dim → bright reveal efekti
+- **Static layer snapshot cache** (A1): scale ticks + backplate + RPM color bands bir kez render → `lv_img` blit (her frame rasterize maliyeti SIFIR)
+- **13 ISO 2575 telltale ikonu**: sinyal (sol/sağ), far (uzun/kısa), brake, ABS, airbag, seatbelt, engine MIL, battery, oil, coolant, fuel low
+- **Telltale animasyon modları**: OFF / ON / **BLINK** (2 Hz sinyal) / **PULSE** (1 Hz fade kritik uyarılar)
+- **Boot bulb-check**: ilk 1.2 sn tüm telltale'ler ON + needle sweep (gerçek araç hissi)
+- **Trip computer paneli**: TRIP km, TIME, anlık L/100km tüketim, RANGE — 1 Hz integrator, sentetik tüketim modeli
+- **Yakıt + soğutma suyu bar'ları** + dinamik renkli (low fuel = kırmızı, normal = yeşil)
+- **Vites göstergesi**: P/R/N/D/1-6 (vites'e göre renk: P/N mavi, R kırmızı, D/sayı yeşil)
+- **ODO** (uint32_t, NVS persisted, autosave 30 sn'de bir)
+- **R-FPS / DR-FPS / Core0% / Core1% canlı sayaçları**
+- **ISO 2575 / OEM-style palet**: Audi-style near-black bg, BMW warm amber, cool-white primary
+
+### Etkileşim
+- **GT911 capacitive touch**: I2C polling 50 Hz, LVGL pointer indev
+- **Settings modal**: ekrana long-press (~400 ms) → "Reset Trip" + "Close"
+
+### Performans
+- **VSYNC-driven phase-locked task pipeline** (demo + ui_refresh + lvgl_task)
+- **Tearing-free**: num_fbs=2 + bounce buffer + bb_invalidate_cache + same-core RGB ISR
+- **PCLK 16 MHz** community-proven config (Waveshare/ESPHome) — DR-FPS ~38 Hz
+- **Snapshot cache**: lv_meter rasterize maliyeti tek seferlik (LVGL #3328 issue)
+- **Per-core CPU%**: FreeRTOS idle hook, auto-calibrating baseline
+
+### Güvenilirlik
+- Critical NULL/race fix paketi (mutex/malloc creation checks, abort on failure)
+- `total_km` uint32_t (silent overflow yok), `trip_m` saturated
+- CH422G I2C write mutex-protected
+- NVS error logging
+- VSYNC ISR IRAM_SAFE
+
+---
+
+## Donanım
+
+### Gerekenler
+- **Waveshare ESP32-S3-Touch-LCD-7 V1.2** ([Waveshare wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7)) — 7" 800×480 RGB TFT, ST7262 sürücü, GT911 dokunmatik, CH422G I/O expander, ESP32-S3-WROOM-1 N16R8 (16MB flash + 8MB octal PSRAM @ 80 MHz)
+- USB Type-C kablo (data destekli — bazı charge-only kablolar çalışmaz)
+- **Önerilen**: 5V/2A USB güç adaptörü (USB-A → USB-C), 470 µF bulk cap brownout için
+
+### Pin haritası
+
+| İşlev | GPIO |
+|---|---|
+| RGB HSYNC / VSYNC / DE / PCLK | 46 / 3 / 5 / 7 |
+| RGB565 16-bit veri | 14, 38, 18, 17, 10, 39, 0, 45, 48, 47, 21, 1, 2, 42, 41, 40 |
+| I²C SCL / SDA (CH422G + GT911) | 9 / 8 |
+| GT911 INT | 4 (OUTPUT LOW olarak kalır — bkz [bilinen sorunlar](#bilinen-sorunlar--workaroundlar)) |
+
+**CH422G EXIO bit haritası**:
+- EXIO1 = TP_RST (touch panel reset)
+- EXIO2 = BL_EN (backlight enable, sadece on/off)
+- EXIO3 = LCD_RST
+- EXIO6 = LCD_VDD enable
+
+---
+
+## Hızlı başlangıç
+
+ESP-IDF kuruluysa ve toolchain hazırsa:
+
+```bash
+git clone https://github.com/haliskilic/carcluster.git
+cd carcluster
+. ~/esp/esp-idf/export.sh
+LC_ALL=C idf.py -p /dev/ttyACM0 flash monitor
+```
+
+> **Türkçe locale notu**: `LC_ALL=C` her komut başında **zorunlu**. Yoksa Xtensa toolchain `wsr.intclear` opcode lookup'ında çuvallıyor.
+
+---
+
+## Detaylı kurulum
+
+### 1. ESP-IDF kurulumu (Linux/macOS)
+
+```bash
+# Bağımlılıklar (Debian/Ubuntu)
+sudo apt-get install git wget flex bison gperf python3 python3-pip \
+    python3-venv cmake ninja-build ccache libffi-dev libssl-dev \
+    dfu-util libusb-1.0-0
+
+# ESP-IDF v5.3.2 (proje bu sürümle test edildi)
+mkdir -p ~/esp && cd ~/esp
+git clone -b v5.3.2 --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf
+./install.sh esp32s3
+
+# Her terminal session'da export
+. ~/esp/esp-idf/export.sh
+```
+
+Doğrulama:
+```bash
+idf.py --version    # ESP-IDF v5.3.2
+xtensa-esp32s3-elf-gcc --version
+```
+
+### 2. Repo'yu klonla
+
+```bash
+cd ~/projects   # veya istediğin yer
+git clone https://github.com/haliskilic/carcluster.git
+cd carcluster
+```
+
+### 3. Hedef chip ayarı
+
+Sadece ilk seferde gerekli:
+```bash
+LC_ALL=C idf.py set-target esp32s3
+```
+
+> **Neden `LC_ALL=C`?** ESP-IDF'in Xtensa toolchain'inin Turkish locale'de Unicode dotted/undotted I (`İ`/`ı`) yüzünden opcode tablo lookup'ında crash ettiği bilinen bir bug var. C locale İngilizce ASCII karşılaştırma yapar — fix bu.
+
+### 4. Build
+
+```bash
+LC_ALL=C idf.py build
+```
+
+İlk build ~3-5 dk sürer (LVGL component download + toolchain compile). Sonraki incremental build'ler ~10-30 sn.
+
+Çıktı: `build/carcluster.bin` (~700 KB)
+
+### 5. Flash + monitor
+
+USB-C ile bağla, port'u tespit et:
+```bash
+ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+# Tipik: /dev/ttyACM0
+```
+
+Flash:
+```bash
+LC_ALL=C idf.py -p /dev/ttyACM0 flash
+```
+
+Serial monitor (boot loglarını görmek için):
+```bash
+LC_ALL=C idf.py -p /dev/ttyACM0 monitor
+# Çıkış: Ctrl-]
+```
+
+Birlikte:
+```bash
+LC_ALL=C idf.py -p /dev/ttyACM0 flash monitor
+```
+
+### 6. Doğrulama
+
+Boot loglarında görmek istediklerin:
+```
+I (xxx) carcluster: === carcluster boot (VSYNC-driven, phase-locked) ===
+I (xxx) board: CH422G + LCD power + backlight OK
+I (xxx) board: RGB panel ready
+I (xxx) touch: GT911 ready, ID: 911<NUL> (39 31 31 00)
+I (xxx) lvgl_port: LVGL ready (VSYNC notify, bloksuz flush)
+I (xxx) persist: loaded total_km=12345
+I (xxx) carcluster: Ready.
+```
+
+Ekranda görmen gereken:
+1. **Açılış (~1.2 sn)**: 13 telltale tümü yanar (bulb-check) + needle 0→max→0 sweep
+2. **Cluster**: sol RPM dial gradient, sağ speed dial cyan arc fill, ortada vites kutusu + trip computer paneli, alt'ta fuel/coolant bars + ODO + R-FPS counter
+3. **Demo cycle**: 0→240→0 km/h tekrar, sol/sağ sinyal blink, park'ta brake pulse + dörtlü flaşör
+4. **Touch**: ekrana 400 ms basılı tut → settings modal (Reset Trip / Close)
+
+### Sorun giderme
+
+**"Permission denied" `/dev/ttyACM0`'a erişirken** (Linux):
+```bash
+sudo usermod -aG dialout $USER
+# logout/login sonra tekrar dene
+```
+
+**Build "incompatible language" hatası**:
+- `LC_ALL=C` unutulmuş. Komutun başına ekle.
+
+**Flash "no port" hatası**:
+- USB kablo data destekli mi? Charge-only kablolar görünmez.
+- Boot mode: BOOT button basılı tut + RST'ye bas (hardware reset). Bazı board'larda gerekli.
+
+**Ekran karanlık / artifakt**:
+- Backlight EXIO2 etkin mi? (`board_init` log'unda "backlight OK" bekleniyor)
+- USB güç yetersiz olabilir (~600 mA çekiyor) — 2A adaptör dene
+- Kart hard reset (`idf.py -p /dev/ttyACM0 erase_flash` sonra flash)
+
+---
 
 ## Mimari
 
 ```
-                Donanım                          Yazılım
-        ┌────────────────────┐         ┌──────────────────────────┐
-        │ ST7262 RGB Panel   │         │ Core 0:                  │
-        │ 800×480 @ 28-31 Hz │ ◄────── │   demo_task    (VSYNC)   │
-        │ DMA + bounce ISR   │         │   ui_refresh   (VSYNC)   │
-        └────────────────────┘         │                          │
-                ▲                      │ Core 1:                  │
-                │ VSYNC IRQ            │   lvgl_task    (5ms)     │
-                │ (faz kilit)          │     └─ render → flush_cb │
-                └──────────────────────┘                          │
-        ┌────────────────────┐         │ Donanım: LCD ISR + DMA   │
-        │ CH422G I/O exp.    │ ◄──────                           │
-        │ I2C: backlight,    │                                    │
-        │ LCD reset, VDD     │                                    │
-        └────────────────────┘                                    │
-                                       └──────────────────────────┘
+   Donanım                                     Yazılım (ESP32-S3 dual core)
+┌────────────────────┐                ┌──────────────────────────────────┐
+│ ST7262 RGB Panel   │                │ Core 0 (PRO):                    │
+│ 800×480 @ 38 Hz    │ ◄── DMA ──     │   demo_task    (VSYNC notify)    │
+│ PCLK 16 MHz        │                │   ui_refresh   (VSYNC notify)    │
+│                    │                │   trip_task    (1 Hz integrator) │
+│   ▲ VSYNC IRQ      │                │   persist      (autosave 30s)    │
+│   │ (faz kilit +   │                │   touch        (50 Hz I2C poll)  │
+│   │  same-core)    │                │   cpu_meter    (500 ms sampler)  │
+└───┼────────────────┘                │                                  │
+    │                                 │ Core 1 (APP):                    │
+    │      ┌─────────────────────┐    │   lvgl_task    (5 ms periodic)   │
+    │      │ Bounce buffer (SRAM)│ ◄──┤     └─ render → flush_cb         │
+    │      │ 10 lines × 800×2 px │    │   board_init   (RGB ISR registr.)│
+    │      └─────────────────────┘    │                                  │
+    │                                 └──────────────────────────────────┘
+    │      ┌─────────────────────┐                  ▲
+    │      │ FB0/FB1 in PSRAM    │                  │ lvgl_port_lock
+    └──────┤ 2 × 768 KB          │ ◄── flush ───────┘ (mutex)
+           └─────────────────────┘
+                  ▲
+                  │ static snapshot
+                  │ (313 KB × 2 in PSRAM)
+           ┌──────┴──────────────┐
+           │ A1 cache: scale +   │
+           │ backplate + bands   │
+           │ → lv_img blit       │
+           └─────────────────────┘
+
+┌────────────────────┐
+│ CH422G I/O exp.    │  EXIO1: TP_RST   EXIO3: LCD_RST
+│ I²C addr 0x24      │  EXIO2: BL_EN    EXIO6: LCD_VDD
+└────────────────────┘
+
+┌────────────────────┐
+│ GT911 cap. touch   │  I²C addr 0x5D (INT pin'i reset'te low → addr select)
+│ INT: GPIO4         │  Polling-based (LVGL indev)
+└────────────────────┘
 ```
 
-## Kullanılan Pinler (Waveshare ESP32-S3-Touch-LCD-7)
+**Phase-locked pipeline**: VSYNC ISR `demo_task`, `ui_refresh` ve LVGL'i aynı 26 ms slot'unda uyandırır. Her frame deterministik — drift yok, tearing yok.
 
-| İşlev | GPIO |
+**A1 snapshot cache**: `lv_meter`'ın scale + tick + band rasterize'ı her frame'de yapılmıyor; bir kez `lv_snapshot_take_to_buf` ile PSRAM buffer'a render → orijinal meter widget silinir → `lv_img` olarak ekrana yapıştırılır. Sadece dinamik katman (needle + arc fill) live çiziliyor.
+
+**A3 same-core + bounce + bb_invalidate_cache**: Espressif resmi anti-tearing pattern'i — RGB DMA ISR ile lv_timer_handler aynı core'da, bounce buffer cache invalidate flag'i ile DMA fresh PSRAM okuyor.
+
+---
+
+## Modüller
+
+```
+main/
+├── main.c          // app_main, state init, NVS load, board_init (core 1), task spawn
+├── board.c/h       // CH422G I2C + LCD reset/power + RGB panel config
+├── lvgl_port.c/h   // LVGL init, VSYNC ISR, flush_cb, indev register
+├── ui.c/h          // Cluster UI (snapshot cache, custom labels, settings modal)
+├── icons.c/h       // 13 ISO telltale icons + animation modes (OFF/ON/BLINK/PULSE)
+├── demo.c/h        // VSYNC-driven test scenario (accel → cruise → brake → park)
+├── trip.c/h        // Trip computer 1 Hz integrator (sentetik fuel model)
+├── persist.c/h     // NVS odometer load/save
+├── touch.c/h       // GT911 driver + 50 Hz polling task
+├── cpu_meter.c/h   // Per-core idle hook + auto-calibrating sampler
+├── state.h         // Shared cluster_state_t + mutex + global handles
+├── CMakeLists.txt
+└── idf_component.yml   // LVGL ~8.4.0 dependency
+```
+
+### Modül işlevleri
+
+| Modül | Sorumluluk |
 |---|---|
-| HSYNC / VSYNC / DE / PCLK | 46 / 3 / 5 / 7 |
-| RGB565 16-bit veri | 14, 38, 18, 17, 10, 39, 0, 45, 48, 47, 21, 1, 2, 42, 41, 40 |
-| I²C SCL / SDA (CH422G + GT911) | 9 / 8 |
+| `main` | Boot, init sırası, task spawn |
+| `board` | I2C + CH422G + LCD power-on + RGB panel ESP_LCD config |
+| `lvgl_port` | LVGL init, VSYNC ISR, flush_cb (panel'e render), indev register |
+| `ui` | Cluster widget'ları, snapshot cache orchestration, settings modal |
+| `icons` | Telltale çizimi, animation timer (50 ms tick, sync'd OFF/ON/BLINK/PULSE) |
+| `demo` | Sentetik sürüş profili (state generator) |
+| `trip` | Mesafe + süre + tüketim + range hesaplama |
+| `persist` | NVS read/write odometer |
+| `touch` | GT911 init + 50 Hz I2C poll → shared state snapshot |
+| `cpu_meter` | FreeRTOS idle hook → per-core utilization % |
+| `state` | Paylaşımlı `cluster_state_t` (speed, rpm, fuel, telltale flags, trip), mutex |
 
-CH422G EXIO bağlantıları: bit2=BL_EN, bit3=LCD_RST, bit6=LCD_VDD_EN
+---
 
-## Build & Flash
+## Touch UI kullanımı
+
+| Eylem | Sonuç |
+|---|---|
+| **Long-press** (~400 ms, herhangi bir yer) | Settings modal açılır |
+| Tap **"Reset Trip"** | Trip distance/time/fuel sıfırlanır, modal kapanır |
+| Tap **"Close"** | Modal kapanır, hiçbir şey değişmez |
+
+Modal full-screen yarı saydam overlay (LV_OPA_70 black) + ortalanmış 420×300 panel. Underlying cluster blur'lu görünür.
+
+---
+
+## Konfigürasyon
+
+### sdkconfig.defaults öne çıkanlar
+
+```
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# Octal PSRAM 80 MHz
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+
+# CPU + FreeRTOS
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_FREERTOS_HZ=1000
+
+# PERF Bundle (Stage 1 + cluster gerekleri)
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+CONFIG_LV_MEMCPY_MEMSET_STD=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
+CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
+
+# LVGL fonts (Montserrat 14, 18, 24, 36, 48)
+CONFIG_LV_FONT_MONTSERRAT_*=y
+CONFIG_LV_MEM_SIZE_KILOBYTES=128
+```
+
+### Runtime parametreler
+
+```
+PCLK              16 MHz (Waveshare/ESPHome community-proven)
+Çözünürlük         800×480 RGB565
+Refresh            ~38 Hz panel scan
+Frame buffer       2 × 768 KB Octal PSRAM (num_fbs=2)
+LVGL buffer        2 × 256 KB PSRAM (BUF_LINES=160, partial mode)
+Bounce buffer      10 satır internal SRAM (~16 KB) + bb_invalidate_cache=1
+Snapshot cache     2 × 313 KB PSRAM (RGBA, lv_img source)
+Anim/timing        VSYNC notify-driven, faz kilit
+PSRAM              Octal 80 MHz (2.3-3 MB kullanım)
+CPU                240 MHz dual core, RGB ISR + lvgl_task aynı core (1)
+```
+
+---
+
+## Bilinen sorunlar / workaround'lar
+
+### GPIO4 (GT911 INT) INPUT modunda display kararıyor — V1.2
+
+**Semptom**: `touch_init` içinde GPIO4'ü `GPIO_MODE_INPUT`'a çevirmek panel'i tamamen karartıyor.
+
+**Tahmin**: V1.2 board'unda GPIO4'ün belgelenmemiş bir paylaşımlı bağlantısı var (büyük olasılıkla panel power veya backlight kontrol). Schematic'te görünmüyor ama deneysel olarak kanıtlandı.
+
+**Workaround**: GPIO4 OUTPUT LOW olarak kalır. Polling-based touch read için INT pin gerekmez (50 Hz I2C poll status register'a). `touch.c`'de adım adım debug edilerek bulundu.
+
+### Türkçe locale Xtensa toolchain crash
+
+**Semptom**: `idf.py build` Turkish locale'de "incompatible language" benzeri hata veriyor.
+
+**Sebep**: Xtensa-esp32s3-elf binutils opcode tablo lookup'ında dotted/undotted I (`İ`/`ı`) Unicode farkı.
+
+**Workaround**: Her `idf.py` komutuna `LC_ALL=C` prefix.
+
+### A2 (direct mode rendering) deferred
+
+**Denenen 3 yaklaşım**:
+1. `direct_mode=1` + 2 panel FB + manual carry-over → bandwidth overload (R-FPS 20)
+2. `full_refresh=1` + 2 panel FB → render too slow (R-FPS 8)
+3. `direct_mode=1` + 1 panel FB + VSYNC sync → tearing visible
+
+**Sebep**: ESP-IDF + LVGL anti-tearing pattern'i `esp-bsp/esp_lvgl_port` seviyesinde driver entegrasyonu gerektiriyor (~200 satırlık state machine, VSYNC + dirty area + buffer alternation koordinasyonu).
+
+**Karar**: Permanent deferred. Mevcut v0.7.0 zaten 38 Hz panel-limited + R-FPS ~200 + tear-free.
+
+### Brownout (yüksek current draw)
+
+**Semptom**: Demo'da yüksek RPM + tüm telltale ON sırasında reset.
+
+**Workaround**: 5V/2A USB adaptör + 470 µF bulk cap (Waveshare 4.3" sibling için belgelenen fix, V1.2'de de geçerli).
+
+---
+
+## Sürüm geçmişi
+
+| Version | Vurgular |
+|---|---|
+| **v0.1** (initial) | Cluster baseline, VSYNC pipeline, 13 telltale ikon, demo |
+| **v0.2.0** | Telltale animasyonu (BLINK/PULSE), boot splash + needle sweep, NVS persistence, trip computer |
+| **v0.3.0** | Per-core CPU meter, BUF_LINES bump, layout tweaks, boot splash kaldırıldı |
+| **v0.4.0** | Critical NULL/race fix paketi, boot sweep + bulb-check, ISO 2575 polish |
+| **v0.5.0** | A3: Same-core RGB ISR + bounce buffer + bb_invalidate_cache + PCLK 16 MHz (DR-FPS 30→38) |
+| **v0.6.0** | A1: lv_meter snapshot cache (PSRAM-backed, R-FPS 130→200) |
+| **v0.7.0** | C6: GT911 touch UI + settings modal (Reset Trip) |
 
 ```bash
-. ~/esp/esp-idf/export.sh
-cd carcluster
-LC_ALL=C idf.py set-target esp32s3
-LC_ALL=C idf.py build
-LC_ALL=C idf.py -p /dev/ttyACM0 flash monitor
+git tag -l    # tüm versiyonlar
+git checkout v0.7.0   # belirli sürüm
 ```
 
-> **Türkçe locale notu**: ESP-IDF'in Xtensa toolchain'i Türkçe locale'de `wsr.intclear` opcode lookup'ında hata verir. `LC_ALL=C` her komut başında zorunlu.
+---
 
-## Konfigürasyon Özeti
+## Yol haritası
 
-```
-PCLK              12 MHz
-Çözünürlük         800×480 RGB565
-Refresh            ~28-31 Hz
-Frame buffer       2 × (768 KB) Octal PSRAM
-LVGL buffer        2 × (128 KB) PSRAM, partial mode
-Bounce buffer      10 satır internal SRAM (16 KB)
-Anim duration      35 ms ease-out
-Tasks              demo + ui_refresh (VSYNC notify) + lvgl (5 ms sabit)
-PSRAM              Octal 80 MHz
-CPU                240 MHz dual core
-```
+### Yapılacak
+- [ ] **C8. Backlight PWM + idle sleep** — community GPIO16 ledc, idle sonrası screen-off
+- [ ] **C5. CAN-bus / OBD-II** — TWAI driver + SN65HVD230 transceiver, gerçek araç verisi
+- [ ] **C9. Audio (buzzer)** — turn signal click, kritik chime
+- [ ] **A4. Damped needle filter** — CAN noise için (CAN entegrasyonu sonrası)
+- [ ] **Touch UI genişletme**: km/h↔mph, redline slider, theme switch
+- [ ] **Tabular condensed sans font** — Barlow Condensed + lv_font_conv
 
-## Demo Profile
+### Kalıcı deferred
+- ~~A2. Direct mode rendering~~ — esp-bsp seviyesinde driver işi gerekiyor
 
-İçsel sürüş senaryosu (`main/demo.c`):
-1. **0 → 240 km/h** lineer ivme, 8.4 sn
-2. **Cruise** 240 km/h, 1.75 sn
-3. **240 → 0 km/h** lineer fren, 8.4 sn
-4. **Park**, 1.4 sn
-5. Sonsuz döngü
-
-## Klasör Yapısı
-
-```
-carcluster/
-├── CMakeLists.txt
-├── sdkconfig.defaults
-├── main/
-│   ├── CMakeLists.txt
-│   ├── idf_component.yml      # LVGL ~8.4.0 dependency
-│   ├── main.c                 # boot, init, task spawn
-│   ├── board.c/h              # CH422G + RGB panel init
-│   ├── lvgl_port.c/h          # LVGL ↔ esp_lcd entegrasyonu, VSYNC ISR
-│   ├── ui.c/h                 # Cluster UI (lv_meter, label, bar)
-│   ├── icons.c/h              # 13 telltale ikonu (lv_obj primitives)
-│   ├── state.h                # Paylaşımlı state struct + mutex
-│   └── demo.c/h               # İçsel sürüş demo task
-└── README.md
-```
-
-## Dökümanlar
-
-- [doc/](../doc/) — tüm donanım/yazılım dokümantasyonu (datasheet, şematik, LVGL, ESP-IDF guide'ları)
+---
 
 ## Lisans
 
-MIT
+MIT — `LICENSE` dosyası repo'da.
+
+### Atıflar / kaynaklar
+
+- [Waveshare ESP32-S3-Touch-LCD-7 wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7)
+- [ESP-IDF v5.3.2 docs](https://docs.espressif.com/projects/esp-idf/en/v5.3.2/esp32s3/)
+- [LVGL v8.4 docs](https://docs.lvgl.io/8.4/)
+- [esp-bsp performance.md](https://github.com/espressif/esp-bsp/blob/master/components/esp_lvgl_port/docs/performance.md)
+- [ISO 2575:2021 — Symbols for controls, indicators and tell-tales](https://www.iso.org/standard/68409.html)
+- ISO 26262 ASIL automotive safety integrity guidelines
+- Espressif anti-tearing FAQ ([RGB LCD docs](https://docs.espressif.com/projects/esp-faq/en/latest/software-framework/peripherals/lcd.html))
+
+Community projeler (PCLK config + GT911 timing):
+- [iamfaraz/Waveshare_ST7262_LVGL](https://github.com/iamfaraz/Waveshare_ST7262_LVGL)
+- [inytar/waveshare-esp32-s3-touch-lcd-7-esphome](https://github.com/inytar/waveshare-esp32-s3-touch-lcd-7-esphome)
+- [bennydiamond/esphome_lvgl_hmi_garage](https://github.com/bennydiamond/esphome_lvgl_hmi_garage)
