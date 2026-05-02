@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.7.8 (idle sleep + About reset count breakdown)
-set(PROJECT_VER "0.7.8")
+# v0.8.0 (B2-B3-B4-B7-B8: tabbed settings — units, trip B, diag, limits, stats)
+set(PROJECT_VER "0.8.0")
 project(carcluster)

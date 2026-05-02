@@ -26,3 +26,29 @@ typedef struct {
 bool persist_load_trip(trip_persist_t *out);   /* true = NVS'te varsa yüklendi */
 void persist_save_trip(const trip_persist_t *t);
 void persist_clear_trip(void);                  /* trip_reset NVS'i de sıfırlasın */
+
+/* Theme — preset palette index (0=Audi default). NVS u8. */
+uint8_t persist_load_theme(void);
+void    persist_save_theme(uint8_t id);
+
+/* Trip B (B3) — bağımsız ikinci trip counter, blob */
+typedef struct {
+    uint32_t trip_b_m;
+    uint32_t trip_b_seconds;
+    uint32_t trip_b_fuel_ml;
+} trip_b_persist_t;
+
+bool persist_load_trip_b(trip_b_persist_t *out);
+void persist_save_trip_b(const trip_b_persist_t *t);
+void persist_clear_trip_b(void);
+
+/* Lifetime stats (B8) — max speed, longest trip, total fuel/time, blob */
+typedef struct {
+    int      max_speed_kmh;
+    uint32_t longest_trip_m;
+    uint32_t total_fuel_ml;
+    uint32_t total_seconds;
+} stats_persist_t;
+
+bool persist_load_stats(stats_persist_t *out);
+void persist_save_stats(const stats_persist_t *s);
