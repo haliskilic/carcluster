@@ -14,7 +14,9 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
+#include "esp_system.h"
 #include "fonts_inter.h"
+#include "persist.h"
 
 /* ISO 2575 / premium cluster palette
  *   BG    : near-black (saf siyah RGB panel artifact'i çağırır)
@@ -830,8 +832,9 @@ static void show_settings_modal(void)
     lv_obj_center(l2);
     lv_obj_add_event_cb(btn_close, modal_close, LV_EVENT_CLICKED, NULL);
 
-    /* Version + reset reason — alt panel (D3) */
+    /* Version + About info — alt panel (2 satır) */
     const esp_app_desc_t *app = esp_app_get_description();
+
     char ver_buf[80];
     snprintf(ver_buf, sizeof(ver_buf), "carcluster %s  •  %s",
              app->version, app->date);
@@ -839,7 +842,26 @@ static void show_settings_modal(void)
     lv_label_set_text(ver_lbl, ver_buf);
     lv_obj_set_style_text_color(ver_lbl, C_DIM, 0);
     lv_obj_set_style_text_font(ver_lbl, &lv_font_inter_14, 0);
-    lv_obj_align(ver_lbl, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_align(ver_lbl, LV_ALIGN_BOTTOM_MID, 0, -28);
+
+    /* Reset count breakdown — fault tracking. PANIC/WDT/BROWNOUT > 0 ise
+     * cluster geçmişte bir sorun yaşadı, bakım dikkati. */
+    char rst_buf[120];
+    uint32_t pwr = persist_get_reset_counter(ESP_RST_POWERON);
+    uint32_t pnc = persist_get_reset_counter(ESP_RST_PANIC);
+    uint32_t wdt = persist_get_reset_counter(ESP_RST_TASK_WDT);
+    uint32_t bro = persist_get_reset_counter(ESP_RST_BROWNOUT);
+    snprintf(rst_buf, sizeof(rst_buf),
+             "boots %lu  •  panic %lu  •  wdt %lu  •  brownout %lu",
+             (unsigned long)pwr, (unsigned long)pnc,
+             (unsigned long)wdt, (unsigned long)bro);
+    lv_obj_t *rst_lbl = lv_label_create(panel);
+    lv_label_set_text(rst_lbl, rst_buf);
+    /* Renkli sinyal: panic veya wdt > 0 ise amber, yoksa dim */
+    lv_obj_set_style_text_color(rst_lbl,
+                                 (pnc > 0 || wdt > 0) ? C_AMBER : C_DIM, 0);
+    lv_obj_set_style_text_font(rst_lbl, &lv_font_inter_14, 0);
+    lv_obj_align(rst_lbl, LV_ALIGN_BOTTOM_MID, 0, -10);
 
     /* Tüm hierarchy hazır → tek invalidation ile göster.
      * Modal şimdi SINGLE batch'te render edilir (3 partial-flush dilimi

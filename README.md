@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.7.7** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.7.8** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -319,9 +319,13 @@ main/
 | Tap **"Pause Demo"** | Demo state üretimi durur + trip integrator durur (TIME/RANGE donar). Tekrar tıkla → "Resume Demo" |
 | Tap **"Close"** | Modal kapanır, hiçbir şey değişmez |
 
-Modal opaque overlay (`#05080F` near-black) + ortalanmış 460×380 panel. Footer'da `carcluster <version> • <build date>` görünür (esp_app_get_description'tan canlı okur).
+Modal opaque overlay (`#05080F` near-black) + ortalanmış 460×380 panel. Footer'da:
+- 1. satır: `carcluster <version> • <build date>` (esp_app_get_description'tan canlı)
+- 2. satır: `boots N • panic X • wdt Y • brownout Z` (NVS counter, panic|wdt > 0 ise **amber** renk)
 
 **Render notu** (v0.7.5'te eklendi): Modal `LV_OBJ_FLAG_HIDDEN` ile yaratılır, tüm child hierarchy build edilir, sonra TEK `lv_obj_clear_flag` çağrısıyla görünür olur. Bu sayede LVGL partial-flush rendering'de (BUF_LINES=160 → 3 dilim/frame) modal içeriği koherent olarak render edilir, "perde gibi yukarıdan aşağı" effect yok.
+
+**Idle sleep** (v0.7.8): Demo paused + **30 sn dokunma yok** → backlight off (CH422G EXIO2). Herhangi bir touch event idle_mark_activity tetikler → backlight back on. Demo running iken activity her zaman fresh sayılır, idle hiç tetiklenmez. Threshold prod için 5 dk olabilir, demo amaçlı 30 sn (idle.c IDLE_THRESHOLD_MS).
 
 ---
 
@@ -468,6 +472,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.5** | Trip pause sync (Pause Demo TIME/RANGE da donar) + modal HIDDEN-pattern (perde efekti yok, single-shot render) + PROJECT_VER UI footer |
 | **v0.7.6** | Paket B: TWDT panic + critical task subscribe (lvgl/demo/ui_refresh/trip self-pet, hung task → reset). Reset reason logging + NVS counter (fault tracking). 10s WDT timeout. |
 | **v0.7.7** | E1: Trip persist across reboot — NVS blob (trip_m + trip_seconds + trip_fuel_ml). Boot'ta yüklenir, her 30 trip-saniyede save (pause'da save yok). Reset Trip butonu NVS'i de temizler. |
+| **v0.7.8** | C8 yazılım: idle sleep (demo paused + 30s no-touch → backlight off, touch wake) + Settings "About" reset count breakdown (boots/panic/wdt/brownout, panic|wdt > 0 ise amber renk uyarı) |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -488,8 +493,10 @@ git checkout v0.7.0   # belirli sürüm
 ### Sıradaki (yazılım)
 - ✅ **B (revize)**: TWDT panic + reset reason + counter — v0.7.6 tamamlandı
 - ✅ **E1**: Trip persist across reboot — v0.7.7 tamamlandı
-- [ ] **C8 (yazılım kısmı)**: Idle sleep — state X sn değişmezse screen-off (ignition signal donanım gerek)
-- [ ] **Settings modal "About" sekmesi**: reset count breakdown göster (POWERON / PANIC / TASK_WDT / BROWNOUT / ...)
+- ✅ **C8 (yazılım)**: Idle sleep — v0.7.8 tamamlandı (demo pause + 30s no-touch → BL off, touch wake)
+- ✅ **Settings "About"**: reset count breakdown — v0.7.8 tamamlandı
+
+**Yazılım-only kalan iş yok.** Sıradaki tüm öğeler donanım gerektiriyor.
 
 ### Donanım gerektirir
 - [ ] **C8 (PWM)**: Backlight dimming — V1.2 stock'ta sadece on/off (CH422G EXIO2). Community GPIO16 ledc claim doğrulanmadı.

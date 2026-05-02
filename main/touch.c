@@ -1,5 +1,6 @@
 #include "touch.h"
 #include "board.h"
+#include "idle.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -63,6 +64,8 @@ static void touch_poll_task(void *arg)
                 s_state.y = y;
                 s_state.pressed = true;
                 xSemaphoreGive(s_mutex);
+                /* Idle wake hook — touch event resmi olarak activity sayılır */
+                idle_mark_activity();
             }
         } else {
             /* status valid but no points → release */

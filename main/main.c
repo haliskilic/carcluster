@@ -13,6 +13,7 @@
 #include "trip.h"
 #include "cpu_meter.h"
 #include "touch.h"
+#include "idle.h"
 
 static const char *TAG = "carcluster";
 
@@ -132,6 +133,9 @@ void app_main(void)
 
     /* CPU meter — idle hook'ları register, sampler task spawn (per-core %) */
     cpu_meter_init();
+
+    /* Idle sleep — demo paused + 30s no touch → backlight off, touch wake */
+    idle_init();
 
     ESP_LOGI(TAG, "Ready.");
 }
