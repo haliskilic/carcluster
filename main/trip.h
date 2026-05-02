@@ -9,5 +9,29 @@
  * Gerçek araç entegrasyonunda (CAN/OBD-II) bu modelin yerine FUEL_RATE PID
  * (LiveData PID 5E) gelir. */
 
-void trip_start(void);   /* Arka plan task'ı başlatır (1 Hz tick) */
-void trip_reset(void);   /* Trip mesafesi/süresi/yakıt sıfırlanır (touch UI'dan) */
+#include <stdint.h>
+
+void trip_start(void);     /* Arka plan task'ı başlatır (1 Hz tick) */
+void trip_reset_a(void);   /* Trip A reset (eski trip_reset) — main panel */
+void trip_reset_b(void);   /* Trip B reset (settings) — bağımsız sayaç */
+
+/* Eski API alias'ı — backward compat (mevcut çağrılar Trip A'ya gider) */
+#define trip_reset trip_reset_a
+
+/* Trip B + lifetime stats — diag/settings içinden okunur */
+typedef struct {
+    uint32_t trip_b_m;
+    uint32_t trip_b_seconds;
+    int      trip_b_avg_speed;
+    int      trip_b_avg_l100_x10;
+} trip_b_view_t;
+
+typedef struct {
+    int      max_speed_kmh;     /* en yüksek anlık hız */
+    uint32_t longest_trip_m;    /* tek trip'te en uzun mesafe */
+    uint32_t total_fuel_ml;     /* lifetime toplam yakıt (mL) */
+    uint32_t total_seconds;     /* lifetime toplam çalışma süresi (s) */
+} trip_stats_t;
+
+void trip_get_b(trip_b_view_t *out);
+void trip_get_stats(trip_stats_t *out);

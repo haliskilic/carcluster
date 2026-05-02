@@ -129,6 +129,73 @@ void persist_clear_trip(void)
     persist_save_trip(&empty);
 }
 
+uint8_t persist_load_theme(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return 0;
+    uint8_t id = 0;
+    nvs_get_u8(h, "theme", &id);
+    nvs_close(h);
+    return id;
+}
+
+void persist_save_theme(uint8_t id)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_u8(h, "theme", id);
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "theme saved: %u", id);
+}
+
+#define KEY_TRIP_B  "trip_b"
+#define KEY_STATS   "stats"
+
+bool persist_load_trip_b(trip_b_persist_t *out)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t sz = sizeof(*out);
+    esp_err_t err = nvs_get_blob(h, KEY_TRIP_B, out, &sz);
+    nvs_close(h);
+    return (err == ESP_OK && sz == sizeof(*out));
+}
+
+void persist_save_trip_b(const trip_b_persist_t *t)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, KEY_TRIP_B, t, sizeof(*t));
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+void persist_clear_trip_b(void)
+{
+    trip_b_persist_t empty = {0, 0, 0};
+    persist_save_trip_b(&empty);
+}
+
+bool persist_load_stats(stats_persist_t *out)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t sz = sizeof(*out);
+    esp_err_t err = nvs_get_blob(h, KEY_STATS, out, &sz);
+    nvs_close(h);
+    return (err == ESP_OK && sz == sizeof(*out));
+}
+
+void persist_save_stats(const stats_persist_t *s)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, KEY_STATS, s, sizeof(*s));
+    nvs_commit(h);
+    nvs_close(h);
+}
+
 static void autosave_task(void *arg)
 {
     (void)arg;

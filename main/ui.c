@@ -17,23 +17,14 @@
 #include "esp_system.h"
 #include "fonts_inter.h"
 #include "persist.h"
+#include "theme.h"
+#include "units.h"
+#include "limits.h"
 
-/* ISO 2575 / premium cluster palette
- *   BG    : near-black (saf siyah RGB panel artifact'i çağırır)
- *   FG    : cool-white (Audi/BMW signature)
- *   AMBER : warm amber (BMW/Porsche standard #FFB400)
- *   RED   : danger ONLY (engine/brake/oil/coolant/airbag)
- *   GREEN : info/active (turn signal, low_beam) */
-#define C_BG       lv_color_hex(0x0a0e14)   /* was 0x070b14 — Audi-style near-black */
-#define C_PANEL    lv_color_hex(0x0d1424)
-#define C_FG       lv_color_hex(0xeef4fb)
-#define C_DIM      lv_color_hex(0x4a5568)
-#define C_RED      lv_color_hex(0xff2030)
-#define C_GREEN    lv_color_hex(0x22c55e)
-#define C_AMBER    lv_color_hex(0xffb400)   /* was 0xffaa00 — BMW/Porsche warm amber */
-#define C_BLUE     lv_color_hex(0x4488ff)
-#define C_ACCENT   lv_color_hex(0x00d4ff)
-#define C_RING     lv_color_hex(0x1c2436)
+/* Renkler artık theme.c içinde global değişken — tema seçimine göre runtime'da
+ * doldurulur. theme_apply(id) ui_build'den önce main.c'de çağrılır. */
+extern lv_color_t C_BG, C_PANEL, C_FG, C_DIM, C_RED, C_GREEN, C_AMBER,
+                  C_BLUE, C_ACCENT, C_RING;
 
 #define ARC_R          280
 #define ARC_W          16
@@ -66,8 +57,7 @@ static void ui_attach_long_press_handler(void);
  *   DIM    : steel-blue gray, band üzerinde "soluk" (still readable, not screaming)
  *   BRIGHT : pure white, "lit/active" — herhangi bir band rengi (yeşil→kırmızı, cyan)
  *            üzerinde max contrast */
-#define C_LBL_DIM     lv_color_hex(0x6b7c91)
-#define C_LBL_BRIGHT  lv_color_hex(0xffffff)
+extern lv_color_t C_LBL_DIM, C_LBL_BRIGHT;
 
 /* Needle damping (D2): target_value vs displayed_value ayrımı.
  * Yeni hedef set edildiğinde 150ms ease-out anim başlar; ara update'ler
@@ -128,7 +118,7 @@ static void apply_speed(int v)
     }
 
     char buf[16];
-    snprintf(buf, sizeof(buf), "%d", v);
+    snprintf(buf, sizeof(buf), "%d", unit_conv_speed(v));
     lv_label_set_text(lbl_speed_val, buf);
 
     /* Reveal: needle taradığı sayıları parlatır. lit = en yüksek aktif index. */
@@ -175,10 +165,7 @@ static lv_obj_t *ic_high, *ic_low;
 static lv_obj_t *ic_brake, *ic_abs, *ic_airbag, *ic_seat;
 static lv_obj_t *ic_engine, *ic_battery, *ic_oil, *ic_coolant, *ic_fuel_low;
 
-/* Tick label rengi — parlak, koyu backplate üzerinde kontrastlı */
-#define C_TICK_LBL  lv_color_hex(0xe6edf5)
-/* Backplate — panel arkaplanından (C_BG=0x070b14) belirgin ayrılır */
-#define C_BACKPLATE lv_color_hex(0x1f2a3a)
+extern lv_color_t C_TICK_LBL, C_BACKPLATE;
 
 /* A1 SNAPSHOT CACHE — statik gauge layer'ı bir kez render → lv_img blit.
  * Her frame'de 5 color band + tick lines + backplate rasterize maliyeti
@@ -229,12 +216,21 @@ static lv_obj_t *make_meter_static(int cx, int cy, int size,
     lv_meter_set_indicator_end_value(m, bp, smax);
 
     if (with_rpm_bands) {
+        /* B7: redline user-adjustable. Bandlar redline'a göre orantılı kayar.
+         * Default 7000 → eski sabit değerlerle birebir aynı renk dağılımı. */
+        int redline_x10 = limits_get()->rpm_redline / 100;
+        if (redline_x10 < 50) redline_x10 = 50;
+        if (redline_x10 > 90) redline_x10 = 90;
         struct { int from, to; uint32_t color; } bands[] = {
-            { 0,  20, 0x22c55e }, { 20, 40, 0x84cc16 }, { 40, 50, 0xeab308 },
-            { 50, 70, 0xf97316 }, { 70, 90, 0xff2030 },
+            { 0,                20,                0x22c55e }, /* green */
+            { 20,               redline_x10 - 30,  0x84cc16 }, /* light green */
+            { redline_x10 - 30, redline_x10 - 20,  0xeab308 }, /* yellow */
+            { redline_x10 - 20, redline_x10,       0xf97316 }, /* orange */
+            { redline_x10,      90,                0xff2030 }, /* red */
         };
         int n = sizeof(bands) / sizeof(bands[0]);
         for (int i = 0; i < n; i++) {
+            if (bands[i].to <= bands[i].from) continue;
             lv_meter_indicator_t *band = lv_meter_add_arc(m, sc_smooth, 40,
                                                          lv_color_hex(bands[i].color), -30);
             lv_meter_set_indicator_start_value(m, band, bands[i].from);
@@ -431,7 +427,7 @@ void ui_build(void)
     lv_obj_t *u2 = lv_label_create(scr);
     lv_obj_set_style_text_color(u2, C_DIM, 0);
     lv_obj_set_style_text_font(u2, &lv_font_inter_18, 0);
-    lv_label_set_text(u2, "km/h");
+    lv_label_set_text(u2, unit_speed_label());
     lv_obj_align_to(u2, meter_speed, LV_ALIGN_CENTER, 0, 50);
 
     /* Anlık hız sayısı km/h yazısının ALTINDA — iğne alanından bağımsız.
@@ -475,11 +471,15 @@ void ui_build(void)
         lv_obj_set_style_radius(tp, 12, 0);
         lv_obj_clear_flag(tp, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-        /* 4 satır: TRIP / TIME / L/100 / RANGE — header yok */
-        lbl_trip_km    = make_trip_row(tp,  8, TPW, "TRIP",  "0.0 km");
-        lbl_trip_time  = make_trip_row(tp, 26, TPW, "TIME",  "00:00");
-        lbl_trip_l100  = make_trip_row(tp, 44, TPW, "L/100", "0.0");
-        lbl_trip_range = make_trip_row(tp, 62, TPW, "RANGE", "-- km");
+        /* 4 satır: TRIP / TIME / L/100 (veya MPG) / RANGE — header yok.
+         * Unit label'lar boot'ta unit setting'e göre yerleşir. */
+        char trip_init[16], range_init[16];
+        snprintf(trip_init,  sizeof(trip_init),  "0.0 %s", unit_dist_label());
+        snprintf(range_init, sizeof(range_init), "-- %s",  unit_dist_label());
+        lbl_trip_km    = make_trip_row(tp,  8, TPW, "TRIP",                trip_init);
+        lbl_trip_time  = make_trip_row(tp, 26, TPW, "TIME",                "00:00");
+        lbl_trip_l100  = make_trip_row(tp, 44, TPW, unit_consum_label(),   "0.0");
+        lbl_trip_range = make_trip_row(tp, 62, TPW, "RANGE",               range_init);
     }
 
     /* Alt şerit */
@@ -549,7 +549,7 @@ void ui_build(void)
     lv_obj_align(lbl_km, LV_ALIGN_BOTTOM_MID, -10, -20);
 
     lv_obj_t *odo_unit = lv_label_create(scr);
-    lv_label_set_text(odo_unit, "km");
+    lv_label_set_text(odo_unit, unit_dist_label());
     lv_obj_set_style_text_color(odo_unit, C_DIM, 0);
     lv_obj_set_style_text_font(odo_unit, &lv_font_inter_18, 0);
     lv_obj_align(odo_unit, LV_ALIGN_BOTTOM_MID, 60, -22);
@@ -644,9 +644,13 @@ void ui_refresh(void)
 
     if (s.temp != prev_temp) {
         lv_bar_set_value(bar_temp, s.temp, LV_ANIM_OFF);
-        snprintf(buf, sizeof(buf), "%dC", s.temp); lv_label_set_text(lbl_temp_val, buf);
+        snprintf(buf, sizeof(buf), "%d%s", unit_conv_temp_c(s.temp),
+                 unit_get() == UNIT_IMPERIAL ? "F" : "C");
+        lv_label_set_text(lbl_temp_val, buf);
+        /* Coolant warn eşiği user-adjustable (B7) — limits.coolant_warn_c */
+        int warn_c = limits_get()->coolant_warn_c;
         lv_obj_set_style_bg_color(bar_temp,
-            s.temp > 110 ? C_RED : (s.temp < 50 ? C_BLUE : C_GREEN), LV_PART_INDICATOR);
+            s.temp > warn_c ? C_RED : (s.temp < 50 ? C_BLUE : C_GREEN), LV_PART_INDICATOR);
         prev_temp = s.temp;
     }
 
@@ -657,7 +661,8 @@ void ui_refresh(void)
     lv_obj_set_style_text_color(lbl_gear, gc, 0);
 
     if (s.total_km != prev_total_km) {
-        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s.total_km);
+        snprintf(buf, sizeof(buf), "%lu",
+                 (unsigned long)unit_conv_dist_km(s.total_km));
         lv_label_set_text(lbl_km, buf);
         prev_total_km = s.total_km;
     }
@@ -667,9 +672,22 @@ void ui_refresh(void)
     static int      prev_inst_x10 = -1, prev_range = -1;
 
     if (s.trip_m != prev_trip_m) {
-        snprintf(buf, sizeof(buf), "%lu.%01lu km",
-                 (unsigned long)(s.trip_m / 1000),
-                 (unsigned long)((s.trip_m % 1000) / 100));
+        /* trip_m metre cinsinden — önce km, sonra unit'e göre çevir */
+        uint32_t km     = s.trip_m / 1000;
+        uint32_t conv_m = unit_conv_dist_km(s.trip_m) / 1;  /* metre proxy */
+        (void)conv_m;
+        if (unit_get() == UNIT_IMPERIAL) {
+            uint32_t mi100 = (s.trip_m * 621u) / 10000u;    /* mi×10 */
+            snprintf(buf, sizeof(buf), "%lu.%01lu %s",
+                     (unsigned long)(mi100 / 10),
+                     (unsigned long)(mi100 % 10),
+                     unit_dist_label());
+        } else {
+            snprintf(buf, sizeof(buf), "%lu.%01lu %s",
+                     (unsigned long)km,
+                     (unsigned long)((s.trip_m % 1000) / 100),
+                     unit_dist_label());
+        }
         lv_label_set_text(lbl_trip_km, buf);
         prev_trip_m = s.trip_m;
     }
@@ -681,16 +699,18 @@ void ui_refresh(void)
         prev_trip_sec = s.trip_seconds;
     }
     if (s.inst_l100_x10 != prev_inst_x10) {
-        snprintf(buf, sizeof(buf), "%d.%d",
-                 s.inst_l100_x10 / 10, s.inst_l100_x10 % 10);
+        int x10 = unit_conv_l100_x10(s.inst_l100_x10);
+        snprintf(buf, sizeof(buf), "%d.%d", x10 / 10, x10 % 10);
         lv_label_set_text(lbl_trip_l100, buf);
         prev_inst_x10 = s.inst_l100_x10;
     }
     if (s.range_km != prev_range) {
         if (s.range_km > 0)
-            snprintf(buf, sizeof(buf), "%d km", s.range_km);
+            snprintf(buf, sizeof(buf), "%d %s",
+                     unit_conv_speed(s.range_km), /* km→mi same factor */
+                     unit_dist_label());
         else
-            snprintf(buf, sizeof(buf), "-- km");
+            snprintf(buf, sizeof(buf), "-- %s", unit_dist_label());
         lv_label_set_text(lbl_trip_range, buf);
         prev_range = s.range_km;
     }
@@ -730,6 +750,17 @@ void ui_set_ip(const char *ip)
  * ============================================================ */
 
 static lv_obj_t *s_settings_modal = NULL;
+static lv_obj_t *s_btn_pause_lbl  = NULL;
+static lv_obj_t *s_theme_btns[THEME_COUNT] = {0};
+static lv_obj_t *s_theme_hint_lbl = NULL;
+static lv_obj_t *s_unit_btns[2]   = {0};   /* 0=Metric 1=Imperial */
+static lv_obj_t *s_unit_hint_lbl  = NULL;
+/* Limits sekmesi state */
+static lv_obj_t *s_lim_rpm_slider     = NULL;
+static lv_obj_t *s_lim_rpm_lbl        = NULL;
+static lv_obj_t *s_lim_coolant_slider = NULL;
+static lv_obj_t *s_lim_coolant_lbl    = NULL;
+static lv_obj_t *s_lim_hint_lbl       = NULL;
 
 static void modal_close(lv_event_t *e)
 {
@@ -737,16 +768,32 @@ static void modal_close(lv_event_t *e)
     if (s_settings_modal) {
         lv_obj_del(s_settings_modal);
         s_settings_modal = NULL;
+        /* Tüm modal-içi pointer'ları temizle (LVGL widget'ları parent'la ölür) */
+        for (int i = 0; i < THEME_COUNT; i++) s_theme_btns[i] = NULL;
+        for (int i = 0; i < 2; i++) s_unit_btns[i] = NULL;
+        s_theme_hint_lbl     = NULL;
+        s_btn_pause_lbl      = NULL;
+        s_unit_hint_lbl      = NULL;
+        s_lim_rpm_slider     = NULL;
+        s_lim_rpm_lbl        = NULL;
+        s_lim_coolant_slider = NULL;
+        s_lim_coolant_lbl    = NULL;
+        s_lim_hint_lbl       = NULL;
     }
 }
 
-static void on_trip_reset(lv_event_t *e)
+static void on_trip_reset_a(lv_event_t *e)
 {
-    trip_reset();
+    trip_reset_a();
     modal_close(e);
 }
 
-static lv_obj_t *s_btn_pause_lbl = NULL;
+static void on_trip_reset_b(lv_event_t *e)
+{
+    trip_reset_b();
+    modal_close(e);
+}
+
 static void on_demo_toggle(lv_event_t *e)
 {
     (void)e;
@@ -756,28 +803,355 @@ static void on_demo_toggle(lv_event_t *e)
     }
 }
 
+/* Theme picker — tıklanan butonun id'si user_data'da. Seçim NVS'e yazılır;
+ * uygulama reboot'ta yeni paleti yükler. "Restart to apply" label'ı görünür. */
+static void update_theme_btn_styles(theme_id_t selected)
+{
+    for (int i = 0; i < THEME_COUNT; i++) {
+        if (!s_theme_btns[i]) continue;
+        bool active = (i == (int)selected);
+        lv_obj_set_style_bg_color(s_theme_btns[i],
+                                  active ? C_ACCENT : C_RING, 0);
+        lv_obj_set_style_border_width(s_theme_btns[i], active ? 2 : 0, 0);
+        lv_obj_set_style_border_color(s_theme_btns[i], C_FG, 0);
+    }
+}
+
+static void on_theme_pick(lv_event_t *e)
+{
+    theme_id_t id = (theme_id_t)(intptr_t)lv_event_get_user_data(e);
+    persist_save_theme((uint8_t)id);
+    update_theme_btn_styles(id);
+    if (s_theme_hint_lbl) {
+        lv_label_set_text(s_theme_hint_lbl, "Restart to apply theme");
+        lv_obj_set_style_text_color(s_theme_hint_lbl, C_AMBER, 0);
+    }
+}
+
+/* Unit picker (B2) — Metric/Imperial. Display label'ları reboot'ta yeniden
+ * yerleşir (gauge "km/h" → "mph", trip "km" → "mi" vs.). */
+static void update_unit_btn_styles(unit_t selected)
+{
+    for (int i = 0; i < 2; i++) {
+        if (!s_unit_btns[i]) continue;
+        bool active = (i == (int)selected);
+        lv_obj_set_style_bg_color(s_unit_btns[i],
+                                  active ? C_ACCENT : C_RING, 0);
+        lv_obj_set_style_border_width(s_unit_btns[i], active ? 2 : 0, 0);
+        lv_obj_set_style_border_color(s_unit_btns[i], C_FG, 0);
+    }
+}
+
+static void on_unit_pick(lv_event_t *e)
+{
+    unit_t u = (unit_t)(intptr_t)lv_event_get_user_data(e);
+    unit_set(u);
+    update_unit_btn_styles(u);
+    if (s_unit_hint_lbl) {
+        lv_label_set_text(s_unit_hint_lbl, "Restart to apply units");
+        lv_obj_set_style_text_color(s_unit_hint_lbl, C_AMBER, 0);
+    }
+}
+
+/* Limits slider'ları (B7) — RPM redline (5000-9000) + coolant warn (90-120).
+ * RPM redline gauge band'ını etkiler → reboot gerekir.
+ * Coolant warn live trigger threshold → reboot gerekmez. */
+static void on_lim_rpm_changed(lv_event_t *e)
+{
+    if (!s_lim_rpm_slider || !s_lim_rpm_lbl) return;
+    int v = lv_slider_get_value(s_lim_rpm_slider);
+    /* 100 RPM step için yuvarla — slider 50..90 (×100) range'inde */
+    int rpm = v * 100;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "RPM redline: %d", rpm);
+    lv_label_set_text(s_lim_rpm_lbl, buf);
+}
+
+static void on_lim_coolant_changed(lv_event_t *e)
+{
+    if (!s_lim_coolant_slider || !s_lim_coolant_lbl) return;
+    int v = lv_slider_get_value(s_lim_coolant_slider);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Coolant warn: %d°C", v);
+    lv_label_set_text(s_lim_coolant_lbl, buf);
+}
+
+static void on_lim_save(lv_event_t *e)
+{
+    if (!s_lim_rpm_slider || !s_lim_coolant_slider) return;
+    limits_t l = {
+        .rpm_redline    = lv_slider_get_value(s_lim_rpm_slider) * 100,
+        .coolant_warn_c = lv_slider_get_value(s_lim_coolant_slider),
+    };
+    limits_set(&l);
+    if (s_lim_hint_lbl) {
+        lv_label_set_text(s_lim_hint_lbl, "Saved — restart for redline");
+        lv_obj_set_style_text_color(s_lim_hint_lbl, C_AMBER, 0);
+    }
+}
+
+/* Tab content build helpers — her sekme kendi içinde widget'larını yerleştirir.
+ * Tabview tab content alan'ı flex-friendly bir lv_obj — manuel align kullanıyoruz. */
+
+static lv_obj_t *make_btn(lv_obj_t *parent, const char *text, lv_color_t bg,
+                          lv_color_t fg, int w, int h,
+                          lv_align_t a, int x, int y,
+                          lv_event_cb_t cb, void *user_data)
+{
+    lv_obj_t *b = lv_btn_create(parent);
+    lv_obj_set_size(b, w, h);
+    lv_obj_align(b, a, x, y);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_color(l, fg, 0);
+    lv_obj_set_style_text_font(l, &lv_font_inter_18, 0);
+    lv_obj_center(l);
+    if (cb) lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, user_data);
+    return b;
+}
+
+static void build_tab_trip(lv_obj_t *t)
+{
+    lv_obj_set_style_pad_all(t, 8, 0);
+
+    make_btn(t, "Reset Trip A", C_ACCENT, lv_color_hex(0x000000),
+             280, 56, LV_ALIGN_TOP_MID, 0, 12, on_trip_reset_a, NULL);
+    make_btn(t, "Reset Trip B", C_BLUE, lv_color_hex(0x000000),
+             280, 56, LV_ALIGN_TOP_MID, 0, 80, on_trip_reset_b, NULL);
+
+    lv_obj_t *btn_pause = lv_btn_create(t);
+    lv_obj_set_size(btn_pause, 280, 56);
+    lv_obj_align(btn_pause, LV_ALIGN_TOP_MID, 0, 148);
+    lv_obj_set_style_bg_color(btn_pause, C_AMBER, 0);
+    lv_obj_set_style_radius(btn_pause, 8, 0);
+    s_btn_pause_lbl = lv_label_create(btn_pause);
+    lv_label_set_text(s_btn_pause_lbl,
+                      g_demo_paused ? "Resume Demo" : "Pause Demo");
+    lv_obj_set_style_text_color(s_btn_pause_lbl, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_text_font(s_btn_pause_lbl, &lv_font_inter_18, 0);
+    lv_obj_center(s_btn_pause_lbl);
+    lv_obj_add_event_cb(btn_pause, on_demo_toggle, LV_EVENT_CLICKED, NULL);
+}
+
+static void build_tab_display(lv_obj_t *t)
+{
+    lv_obj_set_style_pad_all(t, 8, 0);
+
+    /* Theme satırı */
+    lv_obj_t *theme_lbl = lv_label_create(t);
+    lv_label_set_text(theme_lbl, "THEME");
+    lv_obj_set_style_text_color(theme_lbl, C_DIM, 0);
+    lv_obj_set_style_text_font(theme_lbl, &lv_font_inter_14, 0);
+    lv_obj_align(theme_lbl, LV_ALIGN_TOP_MID, 0, 8);
+
+    const char *names[THEME_COUNT] = {"Blue", "Orange", "Yellow", "Red"};
+    int btn_w = 110, btn_h = 40, gap = 10;
+    int row_w = THEME_COUNT * btn_w + (THEME_COUNT - 1) * gap;
+    int x0 = -row_w / 2 + btn_w / 2;
+    for (int i = 0; i < THEME_COUNT; i++) {
+        lv_obj_t *b = lv_btn_create(t);
+        lv_obj_set_size(b, btn_w, btn_h);
+        lv_obj_align(b, LV_ALIGN_TOP_MID, x0 + i * (btn_w + gap), 32);
+        lv_obj_set_style_radius(b, 6, 0);
+        lv_obj_t *l = lv_label_create(b);
+        lv_label_set_text(l, names[i]);
+        lv_obj_set_style_text_color(l, C_FG, 0);
+        lv_obj_set_style_text_font(l, &lv_font_inter_14, 0);
+        lv_obj_center(l);
+        lv_obj_add_event_cb(b, on_theme_pick, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        s_theme_btns[i] = b;
+    }
+    update_theme_btn_styles(theme_active());
+
+    s_theme_hint_lbl = lv_label_create(t);
+    lv_label_set_text(s_theme_hint_lbl, "");
+    lv_obj_set_style_text_font(s_theme_hint_lbl, &lv_font_inter_14, 0);
+    lv_obj_set_style_text_color(s_theme_hint_lbl, C_DIM, 0);
+    lv_obj_align(s_theme_hint_lbl, LV_ALIGN_TOP_MID, 0, 78);
+
+    /* Units satırı */
+    lv_obj_t *unit_lbl = lv_label_create(t);
+    lv_label_set_text(unit_lbl, "UNITS");
+    lv_obj_set_style_text_color(unit_lbl, C_DIM, 0);
+    lv_obj_set_style_text_font(unit_lbl, &lv_font_inter_14, 0);
+    lv_obj_align(unit_lbl, LV_ALIGN_TOP_MID, 0, 110);
+
+    const char *unames[2] = {"Metric", "Imperial"};
+    int u_btn_w = 140, u_gap = 14;
+    int u_row_w = 2 * u_btn_w + u_gap;
+    int u_x0 = -u_row_w / 2 + u_btn_w / 2;
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *b = lv_btn_create(t);
+        lv_obj_set_size(b, u_btn_w, btn_h);
+        lv_obj_align(b, LV_ALIGN_TOP_MID, u_x0 + i * (u_btn_w + u_gap), 134);
+        lv_obj_set_style_radius(b, 6, 0);
+        lv_obj_t *l = lv_label_create(b);
+        lv_label_set_text(l, unames[i]);
+        lv_obj_set_style_text_color(l, C_FG, 0);
+        lv_obj_set_style_text_font(l, &lv_font_inter_14, 0);
+        lv_obj_center(l);
+        lv_obj_add_event_cb(b, on_unit_pick, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        s_unit_btns[i] = b;
+    }
+    update_unit_btn_styles(unit_get());
+
+    s_unit_hint_lbl = lv_label_create(t);
+    lv_label_set_text(s_unit_hint_lbl, "");
+    lv_obj_set_style_text_font(s_unit_hint_lbl, &lv_font_inter_14, 0);
+    lv_obj_set_style_text_color(s_unit_hint_lbl, C_DIM, 0);
+    lv_obj_align(s_unit_hint_lbl, LV_ALIGN_TOP_MID, 0, 184);
+}
+
+static void build_tab_limits(lv_obj_t *t)
+{
+    lv_obj_set_style_pad_all(t, 8, 0);
+    const limits_t *lim = limits_get();
+
+    /* RPM redline slider */
+    s_lim_rpm_lbl = lv_label_create(t);
+    char buf[40];
+    snprintf(buf, sizeof(buf), "RPM redline: %d", lim->rpm_redline);
+    lv_label_set_text(s_lim_rpm_lbl, buf);
+    lv_obj_set_style_text_color(s_lim_rpm_lbl, C_FG, 0);
+    lv_obj_set_style_text_font(s_lim_rpm_lbl, &lv_font_inter_18, 0);
+    lv_obj_align(s_lim_rpm_lbl, LV_ALIGN_TOP_MID, 0, 12);
+
+    s_lim_rpm_slider = lv_slider_create(t);
+    lv_obj_set_size(s_lim_rpm_slider, 480, 18);
+    lv_obj_align(s_lim_rpm_slider, LV_ALIGN_TOP_MID, 0, 46);
+    lv_slider_set_range(s_lim_rpm_slider,
+                        LIMITS_RPM_MIN / 100, LIMITS_RPM_MAX / 100);
+    lv_slider_set_value(s_lim_rpm_slider, lim->rpm_redline / 100, LV_ANIM_OFF);
+    lv_obj_add_event_cb(s_lim_rpm_slider, on_lim_rpm_changed,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
+    /* Coolant warn slider */
+    s_lim_coolant_lbl = lv_label_create(t);
+    snprintf(buf, sizeof(buf), "Coolant warn: %d°C", lim->coolant_warn_c);
+    lv_label_set_text(s_lim_coolant_lbl, buf);
+    lv_obj_set_style_text_color(s_lim_coolant_lbl, C_FG, 0);
+    lv_obj_set_style_text_font(s_lim_coolant_lbl, &lv_font_inter_18, 0);
+    lv_obj_align(s_lim_coolant_lbl, LV_ALIGN_TOP_MID, 0, 84);
+
+    s_lim_coolant_slider = lv_slider_create(t);
+    lv_obj_set_size(s_lim_coolant_slider, 480, 18);
+    lv_obj_align(s_lim_coolant_slider, LV_ALIGN_TOP_MID, 0, 118);
+    lv_slider_set_range(s_lim_coolant_slider,
+                        LIMITS_TEMP_MIN, LIMITS_TEMP_MAX);
+    lv_slider_set_value(s_lim_coolant_slider, lim->coolant_warn_c, LV_ANIM_OFF);
+    lv_obj_add_event_cb(s_lim_coolant_slider, on_lim_coolant_changed,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
+    /* Save button */
+    make_btn(t, "Save Limits", C_ACCENT, lv_color_hex(0x000000),
+             200, 50, LV_ALIGN_TOP_MID, 0, 158, on_lim_save, NULL);
+
+    s_lim_hint_lbl = lv_label_create(t);
+    lv_label_set_text(s_lim_hint_lbl, "");
+    lv_obj_set_style_text_font(s_lim_hint_lbl, &lv_font_inter_14, 0);
+    lv_obj_set_style_text_color(s_lim_hint_lbl, C_DIM, 0);
+    lv_obj_align(s_lim_hint_lbl, LV_ALIGN_TOP_MID, 0, 215);
+}
+
+static void build_tab_diag(lv_obj_t *t)
+{
+    lv_obj_set_style_pad_all(t, 8, 0);
+
+    /* Sistem bilgileri (heap, PSRAM, lifetime stats) — read-only multi-line */
+    const esp_app_desc_t *app = esp_app_get_description();
+    uint32_t pwr = persist_get_reset_counter(ESP_RST_POWERON);
+    uint32_t pnc = persist_get_reset_counter(ESP_RST_PANIC);
+    uint32_t wdt = persist_get_reset_counter(ESP_RST_TASK_WDT);
+    uint32_t bro = persist_get_reset_counter(ESP_RST_BROWNOUT);
+
+    size_t free_int  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t free_psr  = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t min_int   = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+
+    trip_b_view_t b;        trip_get_b(&b);
+    trip_stats_t  s;        trip_get_stats(&s);
+
+    /* Imperial mod'da display unit'leri kullan */
+    int max_spd_disp = unit_conv_speed(s.max_speed_kmh);
+
+    char text[640];
+    int p = 0;
+    p += snprintf(text + p, sizeof(text) - p,
+        "carcluster %s  (%s)\n", app->version, app->date);
+    p += snprintf(text + p, sizeof(text) - p,
+        "boots %lu  panic %lu  wdt %lu  brownout %lu\n",
+        (unsigned long)pwr, (unsigned long)pnc,
+        (unsigned long)wdt, (unsigned long)bro);
+    p += snprintf(text + p, sizeof(text) - p,
+        "heap free: %lu KB (min %lu KB)   PSRAM: %lu KB\n",
+        (unsigned long)(free_int / 1024),
+        (unsigned long)(min_int / 1024),
+        (unsigned long)(free_psr / 1024));
+    p += snprintf(text + p, sizeof(text) - p,
+        "uptime: %llu s\n", esp_timer_get_time() / 1000000ULL);
+    p += snprintf(text + p, sizeof(text) - p, "\n--- TRIP B ---\n");
+    p += snprintf(text + p, sizeof(text) - p,
+        "%lu.%01lu %s  •  %lum %lus\n",
+        (unsigned long)(b.trip_b_m / 1000),
+        (unsigned long)((b.trip_b_m % 1000) / 100),
+        unit_dist_label(),
+        (unsigned long)(b.trip_b_seconds / 60),
+        (unsigned long)(b.trip_b_seconds % 60));
+    p += snprintf(text + p, sizeof(text) - p, "\n--- LIFETIME ---\n");
+    p += snprintf(text + p, sizeof(text) - p,
+        "max speed: %d %s\n", max_spd_disp, unit_speed_label());
+    p += snprintf(text + p, sizeof(text) - p,
+        "longest trip: %lu.%01lu %s\n",
+        (unsigned long)(s.longest_trip_m / 1000),
+        (unsigned long)((s.longest_trip_m % 1000) / 100),
+        unit_dist_label());
+    p += snprintf(text + p, sizeof(text) - p,
+        "total fuel: %lu.%01lu L\n",
+        (unsigned long)(s.total_fuel_ml / 1000),
+        (unsigned long)((s.total_fuel_ml % 1000) / 100));
+    p += snprintf(text + p, sizeof(text) - p,
+        "total runtime: %lu min",
+        (unsigned long)(s.total_seconds / 60));
+
+    lv_obj_t *lbl = lv_label_create(t);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, C_FG, 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_inter_14, 0);
+    lv_obj_align(lbl, LV_ALIGN_TOP_LEFT, 6, 6);
+
+    /* PANIC veya WDT > 0 ise üst başlığı amber renkle vurgula */
+    if (pnc > 0 || wdt > 0) {
+        lv_obj_t *warn = lv_label_create(t);
+        lv_label_set_text(warn, LV_SYMBOL_WARNING " faults present");
+        lv_obj_set_style_text_color(warn, C_AMBER, 0);
+        lv_obj_set_style_text_font(warn, &lv_font_inter_14, 0);
+        lv_obj_align(warn, LV_ALIGN_TOP_RIGHT, -6, 6);
+    }
+}
+
 static void show_settings_modal(void)
 {
     if (s_settings_modal) return;
 
-    /* HIDDEN flag ile yarat → child'lar build edilirken render YOK.
-     * Tüm hierarchy hazırlandıktan sonra single clear-flag → SINGLE
-     * invalidation → modal tek shot render. "Perde" effect ortadan kalkar. */
+    /* HIDDEN flag pattern — child build sırasında render yok, tek shot reveal */
     s_settings_modal = lv_obj_create(lv_scr_act());
     lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_style_all(s_settings_modal);
     lv_obj_set_size(s_settings_modal, LCD_H_RES, LCD_V_RES);
     lv_obj_set_pos(s_settings_modal, 0, 0);
-    /* Opaque overlay → LVGL alttaki gauge'ları compose etmiyor (hızlı render) */
     lv_obj_set_style_bg_color(s_settings_modal, lv_color_hex(0x05080f), 0);
     lv_obj_set_style_bg_opa(s_settings_modal, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_CLICKABLE);
 
-    /* Centered panel — boy artırıldı (3 buton + version) */
+    /* Centered panel hosts tabview + close button */
     lv_obj_t *panel = lv_obj_create(s_settings_modal);
     lv_obj_remove_style_all(panel);
-    lv_obj_set_size(panel, 460, 380);
+    lv_obj_set_size(panel, 740, 440);
     lv_obj_center(panel);
     lv_obj_set_style_bg_color(panel, C_PANEL, 0);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
@@ -786,86 +1160,26 @@ static void show_settings_modal(void)
     lv_obj_set_style_border_color(panel, C_RING, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Title */
-    lv_obj_t *title = lv_label_create(panel);
-    lv_label_set_text(title, "SETTINGS");
-    lv_obj_set_style_text_color(title, C_FG, 0);
-    lv_obj_set_style_text_font(title, &lv_font_inter_24, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+    /* Tabview: 4 sekme — Trip / Display / Limits / Diag */
+    lv_obj_t *tv = lv_tabview_create(panel, LV_DIR_TOP, 44);
+    lv_obj_set_size(tv, 740, 360);
+    lv_obj_set_pos(tv, 0, 0);
+    lv_obj_set_style_bg_color(tv, C_PANEL, 0);
+    lv_obj_t *tab_btns = lv_tabview_get_tab_btns(tv);
+    lv_obj_set_style_text_color(tab_btns, C_FG, 0);
+    lv_obj_set_style_text_font(tab_btns, &lv_font_inter_18, 0);
+    lv_obj_set_style_bg_color(tab_btns, C_RING, 0);
 
-    /* Reset Trip button */
-    lv_obj_t *btn_trip = lv_btn_create(panel);
-    lv_obj_set_size(btn_trip, 280, 56);
-    lv_obj_align(btn_trip, LV_ALIGN_CENTER, 0, -80);
-    lv_obj_set_style_bg_color(btn_trip, C_ACCENT, 0);
-    lv_obj_set_style_radius(btn_trip, 8, 0);
-    lv_obj_t *l1 = lv_label_create(btn_trip);
-    lv_label_set_text(l1, "Reset Trip");
-    lv_obj_set_style_text_color(l1, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_text_font(l1, &lv_font_inter_18, 0);
-    lv_obj_center(l1);
-    lv_obj_add_event_cb(btn_trip, on_trip_reset, LV_EVENT_CLICKED, NULL);
+    build_tab_trip   (lv_tabview_add_tab(tv, "Trip"));
+    build_tab_display(lv_tabview_add_tab(tv, "Display"));
+    build_tab_limits (lv_tabview_add_tab(tv, "Limits"));
+    build_tab_diag   (lv_tabview_add_tab(tv, "Diag"));
 
-    /* Demo Pause/Resume toggle */
-    lv_obj_t *btn_pause = lv_btn_create(panel);
-    lv_obj_set_size(btn_pause, 280, 56);
-    lv_obj_align(btn_pause, LV_ALIGN_CENTER, 0, -8);
-    lv_obj_set_style_bg_color(btn_pause, C_AMBER, 0);
-    lv_obj_set_style_radius(btn_pause, 8, 0);
-    s_btn_pause_lbl = lv_label_create(btn_pause);
-    lv_label_set_text(s_btn_pause_lbl, g_demo_paused ? "Resume Demo" : "Pause Demo");
-    lv_obj_set_style_text_color(s_btn_pause_lbl, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_text_font(s_btn_pause_lbl, &lv_font_inter_18, 0);
-    lv_obj_center(s_btn_pause_lbl);
-    lv_obj_add_event_cb(btn_pause, on_demo_toggle, LV_EVENT_CLICKED, NULL);
+    /* Close button — tabview'in altında */
+    make_btn(panel, "Close", C_DIM, C_FG, 200, 50,
+             LV_ALIGN_BOTTOM_MID, 0, -12, modal_close, NULL);
 
-    /* Close button */
-    lv_obj_t *btn_close = lv_btn_create(panel);
-    lv_obj_set_size(btn_close, 280, 56);
-    lv_obj_align(btn_close, LV_ALIGN_CENTER, 0, 64);
-    lv_obj_set_style_bg_color(btn_close, C_DIM, 0);
-    lv_obj_set_style_radius(btn_close, 8, 0);
-    lv_obj_t *l2 = lv_label_create(btn_close);
-    lv_label_set_text(l2, "Close");
-    lv_obj_set_style_text_color(l2, C_FG, 0);
-    lv_obj_set_style_text_font(l2, &lv_font_inter_18, 0);
-    lv_obj_center(l2);
-    lv_obj_add_event_cb(btn_close, modal_close, LV_EVENT_CLICKED, NULL);
-
-    /* Version + About info — alt panel (2 satır) */
-    const esp_app_desc_t *app = esp_app_get_description();
-
-    char ver_buf[80];
-    snprintf(ver_buf, sizeof(ver_buf), "carcluster %s  •  %s",
-             app->version, app->date);
-    lv_obj_t *ver_lbl = lv_label_create(panel);
-    lv_label_set_text(ver_lbl, ver_buf);
-    lv_obj_set_style_text_color(ver_lbl, C_DIM, 0);
-    lv_obj_set_style_text_font(ver_lbl, &lv_font_inter_14, 0);
-    lv_obj_align(ver_lbl, LV_ALIGN_BOTTOM_MID, 0, -28);
-
-    /* Reset count breakdown — fault tracking. PANIC/WDT/BROWNOUT > 0 ise
-     * cluster geçmişte bir sorun yaşadı, bakım dikkati. */
-    char rst_buf[120];
-    uint32_t pwr = persist_get_reset_counter(ESP_RST_POWERON);
-    uint32_t pnc = persist_get_reset_counter(ESP_RST_PANIC);
-    uint32_t wdt = persist_get_reset_counter(ESP_RST_TASK_WDT);
-    uint32_t bro = persist_get_reset_counter(ESP_RST_BROWNOUT);
-    snprintf(rst_buf, sizeof(rst_buf),
-             "boots %lu  •  panic %lu  •  wdt %lu  •  brownout %lu",
-             (unsigned long)pwr, (unsigned long)pnc,
-             (unsigned long)wdt, (unsigned long)bro);
-    lv_obj_t *rst_lbl = lv_label_create(panel);
-    lv_label_set_text(rst_lbl, rst_buf);
-    /* Renkli sinyal: panic veya wdt > 0 ise amber, yoksa dim */
-    lv_obj_set_style_text_color(rst_lbl,
-                                 (pnc > 0 || wdt > 0) ? C_AMBER : C_DIM, 0);
-    lv_obj_set_style_text_font(rst_lbl, &lv_font_inter_14, 0);
-    lv_obj_align(rst_lbl, LV_ALIGN_BOTTOM_MID, 0, -10);
-
-    /* Tüm hierarchy hazır → tek invalidation ile göster.
-     * Modal şimdi SINGLE batch'te render edilir (3 partial-flush dilimi
-     * koherent içerikle dolar; "perde" değil "tek-shot" görünür). */
+    /* Single invalidation reveal */
     lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_HIDDEN);
 }
 

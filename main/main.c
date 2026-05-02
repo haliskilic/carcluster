@@ -13,6 +13,9 @@
 #include "trip.h"
 #include "cpu_meter.h"
 #include "touch.h"
+#include "theme.h"
+#include "units.h"
+#include "limits.h"
 #include "idle.h"
 
 static const char *TAG = "carcluster";
@@ -96,6 +99,15 @@ void app_main(void)
     /* Bu boot için reset reason counter'ı increment et — fault tracking */
     uint32_t rst_count = persist_inc_reset_counter((int)rst);
     ESP_LOGI(TAG, "Reset count for %s: %lu", reset_reason_str(rst), (unsigned long)rst_count);
+
+    /* Tema palet — ui_build'den önce global C_* renkleri set'le */
+    theme_id_t theme = (theme_id_t)persist_load_theme();
+    theme_apply(theme);
+    ESP_LOGI(TAG, "Theme: %s (%d)", theme_name(theme), theme);
+
+    /* Unit + limits — ui_build içinde formatter ve gauge bandı için */
+    unit_init();
+    limits_init();
 
     /* RGB panel'i core 1'de pinli task'tan başlat → ISR core 1'de kaydolur */
     s_board_init_done = xSemaphoreCreateBinary();

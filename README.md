@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.7.8** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.8.0** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -473,6 +473,8 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.6** | Paket B: TWDT panic + critical task subscribe (lvgl/demo/ui_refresh/trip self-pet, hung task → reset). Reset reason logging + NVS counter (fault tracking). 10s WDT timeout. |
 | **v0.7.7** | E1: Trip persist across reboot — NVS blob (trip_m + trip_seconds + trip_fuel_ml). Boot'ta yüklenir, her 30 trip-saniyede save (pause'da save yok). Reset Trip butonu NVS'i de temizler. |
 | **v0.7.8** | C8 yazılım: idle sleep (demo paused + 30s no-touch → backlight off, touch wake) + Settings "About" reset count breakdown (boots/panic/wdt/brownout, panic|wdt > 0 ise amber renk uyarı) |
+| **v0.7.9** | B1: Theme system — 4 preset palette (Blue/Orange/Yellow/Red), theme.c globals + ui.c extern, settings'te picker, NVS u8 persist, reboot-required apply |
+| **v0.8.0** | B2-B3-B4-B7-B8: Tabbed settings modal (lv_tabview, 4 sekme). **B2 Units** (Metric/Imperial, NVS, reboot apply). **B3 Trip B** (bağımsız ikinci sayaç, paralel tick, NVS). **B7 Limits** (RPM redline 5000-9000 + coolant warn 90-120°C sliders). **B8 Stats** (max speed/longest trip/total fuel/runtime, NVS). **B4 Diag** (heap, PSRAM, uptime, reset counts, Trip B + lifetime stats görünümü) |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -495,8 +497,14 @@ git checkout v0.7.0   # belirli sürüm
 - ✅ **E1**: Trip persist across reboot — v0.7.7 tamamlandı
 - ✅ **C8 (yazılım)**: Idle sleep — v0.7.8 tamamlandı (demo pause + 30s no-touch → BL off, touch wake)
 - ✅ **Settings "About"**: reset count breakdown — v0.7.8 tamamlandı
+- ✅ **B1**: Theme system (4 preset) — v0.7.9 tamamlandı
+- ✅ **B2**: Unit toggle (Metric/Imperial) — v0.8.0 tamamlandı
+- ✅ **B3**: Trip B (bağımsız ikinci sayaç) — v0.8.0 tamamlandı
+- ✅ **B4**: Diagnostic ekranı (heap/PSRAM/stats görünümü) — v0.8.0 tamamlandı
+- ✅ **B7**: Custom limits (RPM redline + coolant warn) — v0.8.0 tamamlandı
+- ✅ **B8**: Lifetime stats (max speed, longest trip, total fuel) — v0.8.0 tamamlandı
 
-**Yazılım-only kalan iş yok.** Sıradaki tüm öğeler donanım gerektiriyor.
+**Yazılım-only kalan kısa liste**: B5 splash screen, B6 touch kalibrasyon ekranı, C1 WiFi+OTA, C2 GitHub Actions CI, D1 odometer flip animasyonu, D2 shift hint. Sıradaki büyük iş donanım (CAN-bus / OBD-II).
 
 ### Donanım gerektirir
 - [ ] **C8 (PWM)**: Backlight dimming — V1.2 stock'ta sadece on/off (CH422G EXIO2). Community GPIO16 ledc claim doğrulanmadı.
