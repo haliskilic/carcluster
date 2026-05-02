@@ -2,6 +2,7 @@
 #include "state.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_task_wdt.h"
 #include <stdint.h>
 
 #define TANK_LITERS  50.0f   /* sentetik depo kapasitesi */
@@ -37,8 +38,11 @@ static float compute_inst_l100(int speed, int rpm)
 static void trip_task(void *arg)
 {
     (void)arg;
+    /* TWDT subscribe — 1 Hz pet, 10s timeout, bol margin */
+    esp_task_wdt_add(NULL);
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));   /* 1 Hz */
+        esp_task_wdt_reset();
 
         /* Pause durumunda integrator durdurulur — TIME/RANGE/avg artmasın.
          * Bu demo pause, gerçek CAN entegrasyonunda key-off ile değişebilir. */

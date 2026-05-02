@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.7.5 (trip pause + modal HIDDEN pattern, smooth open)
-set(PROJECT_VER "0.7.5")
+# v0.7.6 (Paket B: TWDT panic + reset reason + counter)
+set(PROJECT_VER "0.7.6")
 project(carcluster)

@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.7.5** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.7.6** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -466,6 +466,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.3** | Paket D: Inter Display font (tabular figures) + needle damping (150ms ease-out) + settings modal expansion (Pause Demo + version footer) |
 | **v0.7.4** | Display fix: V1.2 BL_EN-after-panel sequence reverted (datasheet ihlali ama V1.2 zorunluluğu) |
 | **v0.7.5** | Trip pause sync (Pause Demo TIME/RANGE da donar) + modal HIDDEN-pattern (perde efekti yok, single-shot render) + PROJECT_VER UI footer |
+| **v0.7.6** | Paket B: TWDT panic + critical task subscribe (lvgl/demo/ui_refresh/trip self-pet, hung task → reset). Reset reason logging + NVS counter (fault tracking). 10s WDT timeout. |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -484,9 +485,10 @@ git checkout v0.7.0   # belirli sürüm
 - ✅ **D2**: Needle damping (150ms ease-out) — v0.7.3
 
 ### Sıradaki (yazılım)
-- [ ] **B (revize)**: TWDT panic + reset reason + project version logging — production foundation, ~6 saat
+- ✅ **B (revize)**: TWDT panic + reset reason + counter — v0.7.6 tamamlandı
 - [ ] **E1**: Persist trip across reboot — 1-2 saat, küçük UX
 - [ ] **C8 (yazılım kısmı)**: Idle sleep — state X sn değişmezse screen-off (ignition signal donanım gerek)
+- [ ] **Settings modal "About" sekmesi**: reset count breakdown göster (POWERON / PANIC / TASK_WDT / BROWNOUT / ...)
 
 ### Donanım gerektirir
 - [ ] **C8 (PWM)**: Backlight dimming — V1.2 stock'ta sadece on/off (CH422G EXIO2). Community GPIO16 ledc claim doğrulanmadı.

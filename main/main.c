@@ -1,6 +1,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_task_wdt.h"
+#include "esp_app_desc.h"
 #include "board.h"
 #include "lvgl_port.h"
 #include "state.h"
@@ -45,23 +48,53 @@ static void board_init_pinned(void *arg)
 static void ui_refresh_task(void *arg)
 {
     /* VSYNC notify-driven — her panel scan başlangıcında uyanır,
-     * 1 frame içinde state'i okuyup widget'ları günceller. Faz kilidi. */
+     * 1 frame içinde state'i okuyup widget'ları günceller. Faz kilidi.
+     * TWDT subscribe: 100ms notify timeout = 10s'den çok kısa, hep pet. */
+    esp_task_wdt_add(NULL);
     while (1) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
         lvgl_port_lock();
         ui_refresh();
         lvgl_port_unlock();
+        esp_task_wdt_reset();
+    }
+}
+
+static const char *reset_reason_str(esp_reset_reason_t r)
+{
+    switch (r) {
+        case ESP_RST_POWERON:   return "POWERON";
+        case ESP_RST_EXT:       return "EXT";
+        case ESP_RST_SW:        return "SW";
+        case ESP_RST_PANIC:     return "PANIC";
+        case ESP_RST_INT_WDT:   return "INT_WDT";
+        case ESP_RST_TASK_WDT:  return "TASK_WDT";
+        case ESP_RST_WDT:       return "WDT";
+        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT:  return "BROWNOUT";
+        case ESP_RST_SDIO:      return "SDIO";
+        default:                return "UNKNOWN";
     }
 }
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "=== carcluster boot (VSYNC-driven, phase-locked) ===");
+    /* Boot diagnostics — version + reset reason her boot'ta tek bakışta görünür */
+    const esp_app_desc_t *app = esp_app_get_description();
+    esp_reset_reason_t rst = esp_reset_reason();
+    ESP_LOGI(TAG, "=== carcluster v%s (%s %s) ===",
+             app->version, app->date, app->time);
+    ESP_LOGI(TAG, "Reset reason: %s (%d)", reset_reason_str(rst), rst);
+    ESP_LOGI(TAG, "VSYNC-driven phase-locked pipeline");
     state_init();
 
     /* NVS persistence — total_km'i yükle, autosave task'ını başlat */
     persist_init();
     g_state.total_km = persist_load_total_km(12345);
+
+    /* Bu boot için reset reason counter'ı increment et — fault tracking */
+    uint32_t rst_count = persist_inc_reset_counter((int)rst);
+    ESP_LOGI(TAG, "Reset count for %s: %lu", reset_reason_str(rst), (unsigned long)rst_count);
 
     /* RGB panel'i core 1'de pinli task'tan başlat → ISR core 1'de kaydolur */
     s_board_init_done = xSemaphoreCreateBinary();
