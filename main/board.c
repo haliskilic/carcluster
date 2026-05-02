@@ -22,10 +22,7 @@ static const char *TAG = "board";
 #define I2C_FREQ_HZ        400000
 
 #define CH422G_ADDR_WR     0x24
-/* BIT_* tanımları board.h'de — touch.c da paylaşıyor.
- * Schematic doğrulama (V1.2): BIT_LCD_VDD=EXIO6 → AP3012 SHDN, BIT_LCD_RST=EXIO3
- * → ST7262 reset, BIT_BL_EN=EXIO2 → AP3032 EN (backlight boost), BIT_TP_RST=EXIO1
- * → GT911 reset. Backlight yalnızca on/off (PWM yok V1.2'de). */
+/* BIT_* tanımları board.h'de — touch.c da paylaşıyor */
 
 static esp_lcd_panel_handle_t s_panel;
 static uint8_t s_ch422g = 0;
@@ -63,17 +60,11 @@ void board_init(void)
         abort();
     }
     i2c_init();
-    /* LCD power-on sequence (ST7262 datasheet sayfa 90):
-     *   1) VDD on, LCD_RST asserted
-     *   2) LCD_RST released
-     *   3) RGB panel + DCLK aktif (esp_lcd_new_rgb_panel)
-     *   4) ≥250ms bekle (T2: DCLK output → backlight on)
-     *   5) BL_EN aktif (board_init_post_panel'de)
-     * BL_EN'i panel başlamadan önce açmak datasheet ihlaliydi → panel latch-up riski. */
     board_ch422g_write(BIT_LCD_VDD | BIT_LCD_RST, 0);  vTaskDelay(pdMS_TO_TICKS(20));
     board_ch422g_write(0, BIT_LCD_RST);                 vTaskDelay(pdMS_TO_TICKS(20));
     board_ch422g_write(BIT_LCD_RST, 0);                 vTaskDelay(pdMS_TO_TICKS(120));
-    ESP_LOGI(TAG, "CH422G + LCD power OK (backlight delayed)");
+    board_ch422g_write(BIT_BL_EN, 0);
+    ESP_LOGI(TAG, "CH422G + LCD power + backlight OK");
 
     /* RGB panel — 800x480 16-bit, ST7262 */
     esp_lcd_rgb_panel_config_t cfg = {
@@ -106,12 +97,7 @@ void board_init(void)
     ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&cfg, &s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
-
-    /* T2 (ST7262): DCLK output → backlight on min 250 ms. Panel'in latch-up
-     * riskini önlemek için bu delay zorunlu. */
-    vTaskDelay(pdMS_TO_TICKS(250));
-    board_ch422g_write(BIT_BL_EN, 0);
-    ESP_LOGI(TAG, "RGB panel ready, backlight on");
+    ESP_LOGI(TAG, "RGB panel ready");
 }
 
 esp_lcd_panel_handle_t board_get_panel(void) { return s_panel; }
