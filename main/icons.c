@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "esp_log.h"
+#include "fonts_inter.h"
 
 /* Renkler — ISO 2575 standardı, ui.c paletiyle eşleşir */
 #define C_RED       lv_color_hex(0xff2030)
@@ -93,7 +94,7 @@ static void draw_abs(lv_obj_t *c, lv_color_t col)
 {
     fill_rect(c, 4, 4, 32, 32, col, 16);
     lv_obj_t *inner = fill_rect(c, 8, 8, 24, 24, C_OFF, 12);
-    txt_in(inner, "ABS", col, &lv_font_montserrat_14, 0, 4);
+    txt_in(inner, "ABS", col, &lv_font_inter_14, 0, 4);
 }
 
 static void draw_airbag(lv_obj_t *c, lv_color_t col)

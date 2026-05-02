@@ -13,6 +13,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_app_desc.h"
+#include "fonts_inter.h"
 
 /* ISO 2575 / premium cluster palette
  *   BG    : near-black (saf siyah RGB panel artifact'i çağırır)
@@ -65,15 +67,64 @@ static void ui_attach_long_press_handler(void);
 #define C_LBL_DIM     lv_color_hex(0x6b7c91)
 #define C_LBL_BRIGHT  lv_color_hex(0xffffff)
 
-/* Anim kaldırıldı — VSYNC periyot (33ms) ile anim duration (35ms) çakışması
- * nedeniyle anim hiç tamamlanmıyordu, sürekli restart oluyordu.
- * Direkt set ile aynı görsel sonuç, daha az CPU. */
+/* Needle damping (D2): target_value vs displayed_value ayrımı.
+ * Yeni hedef set edildiğinde 150ms ease-out anim başlar; ara update'ler
+ * geldikçe anim restart eder (sürekli redirect). Demo'da görsel olarak
+ * "smoother", CAN gerçek verisi geldiğinde noise filter rolünü üstlenir.
+ *
+ * Pattern: lv_anim_set_var(NULL) → her apply_speed çağrısı aynı anim
+ * identity (NULL var + exec_cb), restart edilir. Eski anim cancel olur,
+ * yeni anim displayed_value'dan target'a 150ms eşelir. */
+static int s_speed_displayed   = 0;
+static int s_speed_arc_displayed = 0;
+static int s_rpm_displayed     = 0;
+
+#define NEEDLE_ANIM_MS 150
+
+static void anim_speed_needle_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_speed_displayed = (int)v;
+    lv_meter_set_indicator_value(meter_speed, ind_speed_needle, (int32_t)v);
+}
+static void anim_speed_arc_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_speed_arc_displayed = (int)v;
+    lv_meter_set_indicator_end_value(meter_speed, ind_speed_arc, (int32_t)v);
+}
+static void anim_rpm_needle_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_rpm_displayed = (int)v;
+    lv_meter_set_indicator_value(meter_rpm, ind_rpm_needle, (int32_t)v);
+}
+
+static void start_anim(int32_t from, int32_t to,
+                       lv_anim_exec_xcb_t cb, void *var)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, var);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_time(&a, NEEDLE_ANIM_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, cb);
+    lv_anim_start(&a);
+}
 
 static void apply_speed(int v)
 {
     int spd = v > 240 ? 240 : (v < 0 ? 0 : v);
-    lv_meter_set_indicator_end_value(meter_speed, ind_speed_arc, spd);
-    lv_meter_set_indicator_value(meter_speed, ind_speed_needle, spd);
+
+    /* Damped needle + arc fill — ease-out, sürekli redirect-on-update */
+    static int prev_target = -1;
+    if (spd != prev_target) {
+        start_anim(s_speed_displayed,     spd, anim_speed_needle_cb, (void*)1);
+        start_anim(s_speed_arc_displayed, spd, anim_speed_arc_cb,    (void*)2);
+        prev_target = spd;
+    }
+
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", v);
     lv_label_set_text(lbl_speed_val, buf);
@@ -97,7 +148,13 @@ static void apply_rpm(int v)
     int rpm_x10 = v / 100;
     if (rpm_x10 > 90) rpm_x10 = 90;
     if (rpm_x10 < 0)  rpm_x10 = 0;
-    lv_meter_set_indicator_value(meter_rpm, ind_rpm_needle, rpm_x10);
+
+    /* Damped needle */
+    static int prev_target = -1;
+    if (rpm_x10 != prev_target) {
+        start_anim(s_rpm_displayed, rpm_x10, anim_rpm_needle_cb, (void*)3);
+        prev_target = rpm_x10;
+    }
 
     /* Reveal: needle taradığı sayıları parlatır. Bandlar her zaman tam görünür. */
     static int prev_lit = -2;
@@ -147,7 +204,7 @@ static lv_obj_t *make_meter_static(int cx, int cy, int size,
     lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_set_style_text_opa(m, LV_OPA_TRANSP, LV_PART_TICKS);
-    lv_obj_set_style_text_font(m, &lv_font_montserrat_18, LV_PART_TICKS);
+    lv_obj_set_style_text_font(m, &lv_font_inter_18, LV_PART_TICKS);
 
     lv_meter_scale_t *sc_visual = lv_meter_add_scale(m);
     int total_minor = (n_majors - 1) * n_minor_per_major + 1;
@@ -291,12 +348,12 @@ static void place_tick_labels(lv_obj_t *parent, lv_obj_t **labels, int count,
 
         lv_obj_t *lbl = lv_label_create(parent);
         lv_label_set_text_fmt(lbl, "%d", i * value_step);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_font(lbl, &lv_font_inter_18, 0);
         lv_obj_set_style_text_color(lbl, C_LBL_DIM, 0);
 
         lv_point_t txt_size;
         lv_txt_get_size(&txt_size, lv_label_get_text(lbl),
-                        &lv_font_montserrat_18, 0, 0, LV_COORD_MAX, 0);
+                        &lv_font_inter_18, 0, 0, LV_COORD_MAX, 0);
         lv_obj_set_pos(lbl, x - txt_size.x / 2, y - txt_size.y / 2);
         labels[i] = lbl;
     }
@@ -310,13 +367,13 @@ static lv_obj_t *make_trip_row(lv_obj_t *parent, int y, int panel_w,
     lv_obj_t *l = lv_label_create(parent);
     lv_label_set_text(l, label_text);
     lv_obj_set_style_text_color(l, C_DIM, 0);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(l, &lv_font_inter_14, 0);
     lv_obj_set_pos(l, 12, y + 3);    /* küçük font, 3px alt offset için baseline align */
 
     lv_obj_t *v = lv_label_create(parent);
     lv_label_set_text(v, init_value);
     lv_obj_set_style_text_color(v, C_FG, 0);
-    lv_obj_set_style_text_font(v, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(v, &lv_font_inter_18, 0);
     lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(v, panel_w - 90);   /* sağ tarafta sabit kolon */
     lv_obj_set_pos(v, 78, y);
@@ -355,7 +412,7 @@ void ui_build(void)
 
     lv_obj_t *u1 = lv_label_create(scr);
     lv_obj_set_style_text_color(u1, C_DIM, 0);
-    lv_obj_set_style_text_font(u1, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(u1, &lv_font_inter_18, 0);
     lv_label_set_text(u1, "RPM x 1000");
     /* Offset 50→90: alt tick label'ları (y≈304, val 0 ve val 9) ile çakışmasın.
      * Yeni y=330 → label spans 321-339, tick label'ları y=315'te biter (6px gap). */
@@ -371,7 +428,7 @@ void ui_build(void)
     /* km/h yazısı kadranın merkezinden biraz yukarıda */
     lv_obj_t *u2 = lv_label_create(scr);
     lv_obj_set_style_text_color(u2, C_DIM, 0);
-    lv_obj_set_style_text_font(u2, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(u2, &lv_font_inter_18, 0);
     lv_label_set_text(u2, "km/h");
     lv_obj_align_to(u2, meter_speed, LV_ALIGN_CENTER, 0, 50);
 
@@ -380,7 +437,7 @@ void ui_build(void)
      * label "dans etmiyor", hep aynı yerde kalıyor. */
     lbl_speed_val = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_speed_val, C_FG, 0);
-    lv_obj_set_style_text_font(lbl_speed_val, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_font(lbl_speed_val, &lv_font_inter_36, 0);
     lv_obj_set_style_text_align(lbl_speed_val, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(lbl_speed_val, 110);
     lv_label_set_text(lbl_speed_val, "0");
@@ -397,7 +454,7 @@ void ui_build(void)
     lv_obj_clear_flag(gb, LV_OBJ_FLAG_SCROLLABLE);
     lbl_gear = lv_label_create(gb);
     lv_obj_set_style_text_color(lbl_gear, C_GREEN, 0);
-    lv_obj_set_style_text_font(lbl_gear, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(lbl_gear, &lv_font_inter_48, 0);
     lv_label_set_text(lbl_gear, "P");
     lv_obj_center(lbl_gear);
 
@@ -429,7 +486,7 @@ void ui_build(void)
     lv_obj_t *fl = lv_label_create(scr);
     lv_label_set_text(fl, "FUEL");
     lv_obj_set_style_text_color(fl, C_DIM, 0);
-    lv_obj_set_style_text_font(fl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(fl, &lv_font_inter_18, 0);
     lv_obj_set_pos(fl, 30, by);
 
     bar_fuel = lv_bar_create(scr);
@@ -443,7 +500,7 @@ void ui_build(void)
      * olsa da sağ kenar sabit, etiket dans etmiyor */
     lbl_fuel_pct = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_fuel_pct, C_FG, 0);
-    lv_obj_set_style_text_font(lbl_fuel_pct, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(lbl_fuel_pct, &lv_font_inter_18, 0);
     lv_obj_set_style_text_align(lbl_fuel_pct, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(lbl_fuel_pct, 50);
     lv_label_set_text(lbl_fuel_pct, "100%");
@@ -452,7 +509,7 @@ void ui_build(void)
     lv_obj_t *tp = lv_label_create(scr);
     lv_label_set_text(tp, "COOLANT");
     lv_obj_set_style_text_color(tp, C_DIM, 0);
-    lv_obj_set_style_text_font(tp, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(tp, &lv_font_inter_18, 0);
     lv_obj_set_pos(tp, 550, by);
 
     bar_temp = lv_bar_create(scr);
@@ -465,7 +522,7 @@ void ui_build(void)
     /* temp: sabit 50px right-align → -40C/0C/150C arasında label sabit kalır */
     lbl_temp_val = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_temp_val, C_FG, 0);
-    lv_obj_set_style_text_font(lbl_temp_val, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(lbl_temp_val, &lv_font_inter_18, 0);
     lv_obj_set_style_text_align(lbl_temp_val, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(lbl_temp_val, 50);
     lv_label_set_text(lbl_temp_val, "0C");
@@ -476,14 +533,14 @@ void ui_build(void)
     lv_obj_t *odo_lbl = lv_label_create(scr);
     lv_label_set_text(odo_lbl, "ODO");
     lv_obj_set_style_text_color(odo_lbl, C_DIM, 0);
-    lv_obj_set_style_text_font(odo_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(odo_lbl, &lv_font_inter_14, 0);
     /* -64 → -80: ODO yazısı 1 karakter (~16px) sola, lbl_km uzun değerlerde
      * (1M+ km) sola taştığında çakışmasın */
     lv_obj_align(odo_lbl, LV_ALIGN_BOTTOM_MID, -80, -22);
 
     lbl_km = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_km, C_FG, 0);
-    lv_obj_set_style_text_font(lbl_km, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(lbl_km, &lv_font_inter_24, 0);
     lv_obj_set_style_text_align(lbl_km, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(lbl_km, 100);
     lv_label_set_text(lbl_km, "0");
@@ -492,18 +549,18 @@ void ui_build(void)
     lv_obj_t *odo_unit = lv_label_create(scr);
     lv_label_set_text(odo_unit, "km");
     lv_obj_set_style_text_color(odo_unit, C_DIM, 0);
-    lv_obj_set_style_text_font(odo_unit, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(odo_unit, &lv_font_inter_18, 0);
     lv_obj_align(odo_unit, LV_ALIGN_BOTTOM_MID, 60, -22);
 
     lbl_ip = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_ip, C_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_ip, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_ip, &lv_font_inter_14, 0);
     lv_label_set_text(lbl_ip, "WiFi: ...");
     lv_obj_align(lbl_ip, LV_ALIGN_BOTTOM_LEFT, 8, -4);
 
     lbl_fps = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_fps, C_AMBER, 0);
-    lv_obj_set_style_text_font(lbl_fps, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl_fps, &lv_font_inter_14, 0);
     lv_obj_set_style_text_align(lbl_fps, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_text(lbl_fps, "R-FPS: --  DR-FPS: --  C0: --%  C1: --%");
     lv_obj_align(lbl_fps, LV_ALIGN_BOTTOM_RIGHT, -8, -4);
@@ -687,6 +744,16 @@ static void on_trip_reset(lv_event_t *e)
     modal_close(e);
 }
 
+static lv_obj_t *s_btn_pause_lbl = NULL;
+static void on_demo_toggle(lv_event_t *e)
+{
+    (void)e;
+    g_demo_paused = !g_demo_paused;
+    if (s_btn_pause_lbl) {
+        lv_label_set_text(s_btn_pause_lbl, g_demo_paused ? "Resume Demo" : "Pause Demo");
+    }
+}
+
 static void show_settings_modal(void)
 {
     if (s_settings_modal) return;
@@ -699,12 +766,12 @@ static void show_settings_modal(void)
     lv_obj_set_style_bg_color(s_settings_modal, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(s_settings_modal, LV_OPA_70, 0);
     lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_CLICKABLE);  /* event'leri tutsun */
+    lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_CLICKABLE);
 
-    /* Centered panel */
+    /* Centered panel — boy artırıldı (3 buton + version) */
     lv_obj_t *panel = lv_obj_create(s_settings_modal);
     lv_obj_remove_style_all(panel);
-    lv_obj_set_size(panel, 420, 300);
+    lv_obj_set_size(panel, 460, 380);
     lv_obj_center(panel);
     lv_obj_set_style_bg_color(panel, C_PANEL, 0);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
@@ -717,41 +784,58 @@ static void show_settings_modal(void)
     lv_obj_t *title = lv_label_create(panel);
     lv_label_set_text(title, "SETTINGS");
     lv_obj_set_style_text_color(title, C_FG, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_set_style_text_font(title, &lv_font_inter_24, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
 
     /* Reset Trip button */
     lv_obj_t *btn_trip = lv_btn_create(panel);
-    lv_obj_set_size(btn_trip, 280, 60);
-    lv_obj_align(btn_trip, LV_ALIGN_CENTER, 0, -32);
+    lv_obj_set_size(btn_trip, 280, 56);
+    lv_obj_align(btn_trip, LV_ALIGN_CENTER, 0, -80);
     lv_obj_set_style_bg_color(btn_trip, C_ACCENT, 0);
     lv_obj_set_style_radius(btn_trip, 8, 0);
     lv_obj_t *l1 = lv_label_create(btn_trip);
     lv_label_set_text(l1, "Reset Trip");
     lv_obj_set_style_text_color(l1, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_text_font(l1, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(l1, &lv_font_inter_18, 0);
     lv_obj_center(l1);
     lv_obj_add_event_cb(btn_trip, on_trip_reset, LV_EVENT_CLICKED, NULL);
 
+    /* Demo Pause/Resume toggle */
+    lv_obj_t *btn_pause = lv_btn_create(panel);
+    lv_obj_set_size(btn_pause, 280, 56);
+    lv_obj_align(btn_pause, LV_ALIGN_CENTER, 0, -8);
+    lv_obj_set_style_bg_color(btn_pause, C_AMBER, 0);
+    lv_obj_set_style_radius(btn_pause, 8, 0);
+    s_btn_pause_lbl = lv_label_create(btn_pause);
+    lv_label_set_text(s_btn_pause_lbl, g_demo_paused ? "Resume Demo" : "Pause Demo");
+    lv_obj_set_style_text_color(s_btn_pause_lbl, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_text_font(s_btn_pause_lbl, &lv_font_inter_18, 0);
+    lv_obj_center(s_btn_pause_lbl);
+    lv_obj_add_event_cb(btn_pause, on_demo_toggle, LV_EVENT_CLICKED, NULL);
+
     /* Close button */
     lv_obj_t *btn_close = lv_btn_create(panel);
-    lv_obj_set_size(btn_close, 280, 60);
-    lv_obj_align(btn_close, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_size(btn_close, 280, 56);
+    lv_obj_align(btn_close, LV_ALIGN_CENTER, 0, 64);
     lv_obj_set_style_bg_color(btn_close, C_DIM, 0);
     lv_obj_set_style_radius(btn_close, 8, 0);
     lv_obj_t *l2 = lv_label_create(btn_close);
     lv_label_set_text(l2, "Close");
     lv_obj_set_style_text_color(l2, C_FG, 0);
-    lv_obj_set_style_text_font(l2, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(l2, &lv_font_inter_18, 0);
     lv_obj_center(l2);
     lv_obj_add_event_cb(btn_close, modal_close, LV_EVENT_CLICKED, NULL);
 
-    /* Hint */
-    lv_obj_t *hint = lv_label_create(panel);
-    lv_label_set_text(hint, "long-press cluster to open");
-    lv_obj_set_style_text_color(hint, C_DIM, 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -12);
+    /* Version + reset reason — alt panel (D3) */
+    const esp_app_desc_t *app = esp_app_get_description();
+    char ver_buf[80];
+    snprintf(ver_buf, sizeof(ver_buf), "carcluster %s  •  %s",
+             app->version, app->date);
+    lv_obj_t *ver_lbl = lv_label_create(panel);
+    lv_label_set_text(ver_lbl, ver_buf);
+    lv_obj_set_style_text_color(ver_lbl, C_DIM, 0);
+    lv_obj_set_style_text_font(ver_lbl, &lv_font_inter_14, 0);
+    lv_obj_align(ver_lbl, LV_ALIGN_BOTTOM_MID, 0, -10);
 }
 
 static void on_screen_long_press(lv_event_t *e)

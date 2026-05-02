@@ -39,8 +39,11 @@ static void apply_full(int spd, char gear, bool low,
 
 static void wait_frame(void)
 {
-    /* VSYNC ISR demo_task'a notify atar (faz kilit) */
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+    /* VSYNC ISR demo_task'a notify atar (faz kilit). Pause durumunda
+     * iterasyon body skip; state aynen kalır, ekran donmaz (LVGL hâlâ render). */
+    do {
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+    } while (g_demo_paused);
 }
 
 static void demo_loop_task(void *arg)

@@ -17,6 +17,7 @@ cluster_state_t g_state = { .gear = 'P', .fuel = 75, .temp = 90 };  /* total_km 
 SemaphoreHandle_t g_state_mutex;
 volatile TaskHandle_t g_demo_task = NULL;
 volatile TaskHandle_t g_ui_task   = NULL;
+volatile bool g_demo_paused = false;
 
 void state_init(void)
 {
