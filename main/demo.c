@@ -2,10 +2,15 @@
 #include "state.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdint.h>
 
 /* VSYNC-driven sürüş demosu — her panel scan'da bir step ilerler.
  * 0→240 km/h: 240 frame × 35 ms = ~8.4 sn. Telltale animasyonlarını görmek için
  * her fazda farklı uyarı kombinasyonu tetikleniyor. */
+
+/* Odometer mm accumulator — frame başına ++ saniyede ~30 km eklerdi (BUG).
+ * Doğru: 30 fps × 33.3ms × spd km/h = spd × 9.26 mm per frame. 1km=10⁶ mm. */
+static uint32_t s_odo_mm = 0;
 
 static void apply_full(int spd, char gear, bool low,
                        bool lblink, bool rblink,
@@ -20,7 +25,15 @@ static void apply_full(int spd, char gear, bool low,
     g_state.right_blink = rblink;
     g_state.brake_warn  = brake_w;
     g_state.engine_warn = engine_w;
-    if (spd > 0) g_state.total_km++;
+    /* Realistic odometer integration: spd km/h × 33.3 ms = spd × 9 mm per frame.
+     * 1 km = 1.000.000 mm. Her 1 km tamamlandığında total_km++. */
+    if (spd > 0) {
+        s_odo_mm += (uint32_t)(spd * 9);
+        while (s_odo_mm >= 1000000u) {
+            s_odo_mm -= 1000000u;
+            if (g_state.total_km < UINT32_MAX) g_state.total_km++;
+        }
+    }
     state_unlock();
 }
 

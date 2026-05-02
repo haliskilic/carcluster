@@ -247,8 +247,15 @@ static lv_obj_t *make_meter(int cx, int cy, int size,
         abort();
     }
     /* dsc statik storage — lv_img buna ref tutar (lifetime program boyunca) */
+    /* Pool için sabit kapasite — 2 gauge (RPM + Speed). 3. çağrı = bug,
+     * abort ile yakala (sessiz stack corruption yerine). */
     static lv_img_dsc_t dsc_pool[2];
     static int dsc_idx = 0;
+    if (dsc_idx >= (int)(sizeof(dsc_pool) / sizeof(dsc_pool[0]))) {
+        ESP_LOGE("ui", "snapshot dsc pool overflow (max %d)",
+                 (int)(sizeof(dsc_pool) / sizeof(dsc_pool[0])));
+        abort();
+    }
     lv_img_dsc_t *dsc = &dsc_pool[dsc_idx++];
 
     if (lv_snapshot_take_to_buf(st, LV_IMG_CF_TRUE_COLOR_ALPHA, dsc, buf, buf_size)
