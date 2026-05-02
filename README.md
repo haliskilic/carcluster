@@ -64,6 +64,8 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 
 ## Donanım
 
+> **Detaylı versiyon ve gereksinim listesi**: [REQUIREMENTS.md](REQUIREMENTS.md) — geliştirme ortamı (tested with) + minimum gereksinimler ayrı ayrı.
+
 ### Gerekenler
 - **Waveshare ESP32-S3-Touch-LCD-7 V1.2** ([Waveshare wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7)) — 7" 800×480 RGB TFT, ST7262 sürücü, GT911 dokunmatik, CH422G I/O expander, ESP32-S3-WROOM-1 N16R8 (16MB flash + 8MB octal PSRAM @ 80 MHz)
 - USB Type-C kablo (data destekli — bazı charge-only kablolar çalışmaz)
