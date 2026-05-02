@@ -40,6 +40,10 @@ static void trip_task(void *arg)
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));   /* 1 Hz */
 
+        /* Pause durumunda integrator durdurulur — TIME/RANGE/avg artmasın.
+         * Bu demo pause, gerçek CAN entegrasyonunda key-off ile değişebilir. */
+        if (g_demo_paused) continue;
+
         state_lock();
         int spd  = g_state.speed;
         int rpm  = g_state.rpm;

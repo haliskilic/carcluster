@@ -4,7 +4,8 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
-> **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache
+> **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
+> **Mevcut sürüm**: **v0.7.5** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -315,9 +316,12 @@ main/
 |---|---|
 | **Long-press** (~400 ms, herhangi bir yer) | Settings modal açılır |
 | Tap **"Reset Trip"** | Trip distance/time/fuel sıfırlanır, modal kapanır |
+| Tap **"Pause Demo"** | Demo state üretimi durur + trip integrator durur (TIME/RANGE donar). Tekrar tıkla → "Resume Demo" |
 | Tap **"Close"** | Modal kapanır, hiçbir şey değişmez |
 
-Modal full-screen yarı saydam overlay (LV_OPA_70 black) + ortalanmış 420×300 panel. Underlying cluster blur'lu görünür.
+Modal opaque overlay (`#05080F` near-black) + ortalanmış 460×380 panel. Footer'da `carcluster <version> • <build date>` görünür (esp_app_get_description'tan canlı okur).
+
+**Render notu** (v0.7.5'te eklendi): Modal `LV_OBJ_FLAG_HIDDEN` ile yaratılır, tüm child hierarchy build edilir, sonra TEK `lv_obj_clear_flag` çağrısıyla görünür olur. Bu sayede LVGL partial-flush rendering'de (BUF_LINES=160 → 3 dilim/frame) modal içeriği koherent olarak render edilir, "perde gibi yukarıdan aşağı" effect yok.
 
 ---
 
@@ -457,6 +461,11 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.5.0** | A3: Same-core RGB ISR + bounce buffer + bb_invalidate_cache + PCLK 16 MHz (DR-FPS 30→38) |
 | **v0.6.0** | A1: lv_meter snapshot cache (PSRAM-backed, R-FPS 130→200) |
 | **v0.7.0** | C6: GT911 touch UI + settings modal (Reset Trip) |
+| **v0.7.1** | REQUIREMENTS.md + ODO label position fix |
+| **v0.7.2** | Paket A: critical fixes (demo total_km mm-accumulator, dsc_pool guard) |
+| **v0.7.3** | Paket D: Inter Display font (tabular figures) + needle damping (150ms ease-out) + settings modal expansion (Pause Demo + version footer) |
+| **v0.7.4** | Display fix: V1.2 BL_EN-after-panel sequence reverted (datasheet ihlali ama V1.2 zorunluluğu) |
+| **v0.7.5** | Trip pause sync (Pause Demo TIME/RANGE da donar) + modal HIDDEN-pattern (perde efekti yok, single-shot render) + PROJECT_VER UI footer |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -467,16 +476,26 @@ git checkout v0.7.0   # belirli sürüm
 
 ## Yol haritası
 
-### Yapılacak
-- [ ] **C8. Backlight PWM + idle sleep** — community GPIO16 ledc, idle sonrası screen-off
-- [ ] **C5. CAN-bus / OBD-II** — TWAI driver + SN65HVD230 transceiver, gerçek araç verisi
-- [ ] **C9. Audio (buzzer)** — turn signal click, kritik chime
-- [ ] **A4. Damped needle filter** — CAN noise için (CAN entegrasyonu sonrası)
-- [ ] **Touch UI genişletme**: km/h↔mph, redline slider, theme switch
-- [ ] **Tabular condensed sans font** — Barlow Condensed + lv_font_conv
+### Tamamlananlar
+- ✅ **A1**: lv_meter snapshot cache (R-FPS 200) — v0.6.0
+- ✅ **A3**: Same-core RGB ISR + bounce + bb_invalidate_cache (DR-FPS 38) — v0.5.0
+- ✅ **C6**: GT911 touch UI + settings modal — v0.7.0+
+- ✅ **D1**: Tabular numerals (Inter Display) — v0.7.3
+- ✅ **D2**: Needle damping (150ms ease-out) — v0.7.3
+
+### Sıradaki (yazılım)
+- [ ] **B (revize)**: TWDT panic + reset reason + project version logging — production foundation, ~6 saat
+- [ ] **E1**: Persist trip across reboot — 1-2 saat, küçük UX
+- [ ] **C8 (yazılım kısmı)**: Idle sleep — state X sn değişmezse screen-off (ignition signal donanım gerek)
+
+### Donanım gerektirir
+- [ ] **C8 (PWM)**: Backlight dimming — V1.2 stock'ta sadece on/off (CH422G EXIO2). Community GPIO16 ledc claim doğrulanmadı.
+- [ ] **C5**: CAN-bus / OBD-II — TWAI driver + SN65HVD230 transceiver
+- [ ] **C9**: Audio (buzzer) — piezo + PWM
+- [ ] **E6**: DS3231 RTC — absolute time, key-off persistence
 
 ### Kalıcı deferred
-- ~~A2. Direct mode rendering~~ — esp-bsp seviyesinde driver işi gerekiyor
+- ~~A2. Direct mode rendering~~ — 4 farklı yaklaşım denendi, hepsi başarısız (display tearing veya R-FPS düşüşü). esp-bsp seviyesinde driver state machine gerek (~1-2 gün iş, marjinal kazanç).
 
 ---
 

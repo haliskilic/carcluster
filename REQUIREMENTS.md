@@ -1,5 +1,7 @@
 # Requirements & Tested Versions
 
+> **Son sürüm**: v0.7.5 (Mayıs 2026)
+
 İki ayrı bölüm:
 - **Geliştirme ortamı** — projenin geliştirildiği ve test edildiği EXACT versiyonlar
 - **Minimum gereksinimler** — projenin çalışması için gereken alt sınırlar
@@ -176,14 +178,14 @@ cat managed_components/lvgl__lvgl/idf_component.yml | grep version
 
 ## 4. Build artifact boyutları (referans)
 
-v0.7.0 build çıktıları:
+v0.7.5 build çıktıları:
 
 | Artifact | Boyut |
 |---|---|
 | `bootloader.bin` | ~23 KB |
 | `partition-table.bin` | 3 KB |
-| `carcluster.bin` (uygulama) | ~700 KB |
-| **Toplam flash kullanımı** | ~726 KB / ~2 MB partition (43% kullanılı) |
+| `carcluster.bin` (uygulama) | ~1.2 MB (Inter font 5 boyutu RGBA = ~500 KB ekledi) |
+| **Toplam flash kullanımı** | ~1.2 MB / ~2 MB partition (60% kullanılı) |
 | **PSRAM çalışma zamanı** | ~3 MB (FBs + snapshots + LVGL bufs + heap) |
 | **Internal SRAM** | ~280 KB (stacklar + bounce buffer + LVGL fast_mem IRAM) |
 | **IRAM** | ~140 KB (LVGL hot path + ISR'lar + Stage 1 attribute) |

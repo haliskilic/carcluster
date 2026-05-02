@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.7.4 (display fix — BL_EN sequence revert)
-set(PROJECT_VER "0.7.4")
+# v0.7.5 (trip pause + modal HIDDEN pattern, smooth open)
+set(PROJECT_VER "0.7.5")
 project(carcluster)
