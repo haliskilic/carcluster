@@ -2,6 +2,7 @@
 #include "state.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_task_wdt.h"
 #include <stdint.h>
 
 /* VSYNC-driven sürüş demosu — her panel scan'da bir step ilerler.
@@ -40,14 +41,20 @@ static void apply_full(int spd, char gear, bool low,
 static void wait_frame(void)
 {
     /* VSYNC ISR demo_task'a notify atar (faz kilit). Pause durumunda
-     * iterasyon body skip; state aynen kalır, ekran donmaz (LVGL hâlâ render). */
+     * iterasyon body skip; state aynen kalır, ekran donmaz (LVGL hâlâ render).
+     * Pause sırasında bile WDT pet edilmeli, yoksa 10s'de panic eder. */
     do {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+        esp_task_wdt_reset();
     } while (g_demo_paused);
 }
 
 static void demo_loop_task(void *arg)
 {
+    /* TWDT subscribe — sweep ve normal cycle'da wait_frame her iterasyonda
+     * esp_task_wdt_reset() çağırıyor (vTaskDelay tek başına yetmez). */
+    esp_task_wdt_add(NULL);
+
     /* Boot fast sweep (~840 ms) — needle 0→240→0 + RPM 800→9200→800.
      * icons.c'deki bulb-check (1200 ms tüm telltale ON) ile çakışır:
      * sweep biterken telltale'ler de söner ve normal mod'a geçilir. */
@@ -57,6 +64,7 @@ static void demo_loop_task(void *arg)
         g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
         g_state.gear  = 'P';
         state_unlock();
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     for (int v = 240; v >= 0; v -= 12) {
@@ -64,6 +72,7 @@ static void demo_loop_task(void *arg)
         g_state.speed = v;
         g_state.rpm   = (v > 0) ? (800 + v * 35) : 800;
         state_unlock();
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     state_lock();

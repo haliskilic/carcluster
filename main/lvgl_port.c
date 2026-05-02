@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_task_wdt.h"
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_panel_ops.h"
 
@@ -74,11 +75,13 @@ static void touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
 
 static void lvgl_task(void *arg)
 {
-    /* lv_timer_handler_run_in_period: idiomatic LVGL pattern, sabit periyot */
+    /* TWDT subscribe: 10s timeout; loop her ~5ms reset → bol margin */
+    esp_task_wdt_add(NULL);
     while (1) {
         if (xSemaphoreTake(s_lvgl_mutex, portMAX_DELAY) == pdTRUE) {
             lv_timer_handler_run_in_period(LVGL_PERIOD_MS);
             xSemaphoreGive(s_lvgl_mutex);
+            esp_task_wdt_reset();
             vTaskDelay(pdMS_TO_TICKS(LVGL_PERIOD_MS));
         }
     }

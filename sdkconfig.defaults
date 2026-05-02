@@ -46,6 +46,13 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 # Main stack
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
+# Task watchdog — panic+reset on hang (production reliability).
+# Critical tasks (lvgl_task, demo_loop, ui_refresh, trip) self-subscribe
+# via esp_task_wdt_add() and pet via esp_task_wdt_reset() each loop.
+# Timeout 10s: boot phase slow ops için margin var; runtime tasks hep <1s'de pet eder.
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
 CONFIG_LV_MEM_SIZE_KILOBYTES=128
 
 # LVGL fonts — built-in Montserrat'lar KAPALI; main/fonts/ altındaki Inter

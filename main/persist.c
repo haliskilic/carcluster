@@ -12,6 +12,11 @@ static const char *TAG = "persist";
 #define KEY_TOTAL_KM  "total_km"
 #define AUTOSAVE_MS   30000   /* 30 sn — NVS wear ile UX güncelliği dengesi */
 
+/* Reset reason counter key — esp_reset_reason_t enum value (0-9) */
+static void reset_key(int reason, char *buf, size_t buflen) {
+    snprintf(buf, buflen, "rst_%d", reason);
+}
+
 void persist_init(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -52,6 +57,33 @@ void persist_save_total_km(uint32_t km)
     err = nvs_commit(h);
     if (err != ESP_OK) ESP_LOGW(TAG, "nvs_commit: %s", esp_err_to_name(err));
     nvs_close(h);
+}
+
+uint32_t persist_inc_reset_counter(int reason)
+{
+    char key[16];
+    reset_key(reason, key, sizeof(key));
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return 0;
+    uint32_t cnt = 0;
+    nvs_get_u32(h, key, &cnt);
+    cnt++;
+    nvs_set_u32(h, key, cnt);
+    nvs_commit(h);
+    nvs_close(h);
+    return cnt;
+}
+
+uint32_t persist_get_reset_counter(int reason)
+{
+    char key[16];
+    reset_key(reason, key, sizeof(key));
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return 0;
+    uint32_t cnt = 0;
+    nvs_get_u32(h, key, &cnt);
+    nvs_close(h);
+    return cnt;
 }
 
 static void autosave_task(void *arg)
