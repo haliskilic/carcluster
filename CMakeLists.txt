@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.7.7 (E1: trip persist across reboot)
-set(PROJECT_VER "0.7.7")
+# v0.7.8 (idle sleep + About reset count breakdown)
+set(PROJECT_VER "0.7.8")
 project(carcluster)

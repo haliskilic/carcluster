@@ -10,6 +10,7 @@ idf_component_register(
         "trip.c"
         "cpu_meter.c"
         "touch.c"
+        "idle.c"
         "fonts/lv_font_inter_14.c"
         "fonts/lv_font_inter_18.c"
         "fonts/lv_font_inter_24.c"
