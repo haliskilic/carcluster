@@ -1,6 +1,7 @@
 #include "lvgl_port.h"
 #include "board.h"
 #include "state.h"
+#include "touch.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -55,6 +56,22 @@ static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *colo
 
 static void tick_cb(void *arg) { lv_tick_inc(LVGL_TICK_MS); }
 
+/* GT911 touch → LVGL pointer indev. touch.c'nin shared snapshot'undan okur. */
+static void touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data)
+{
+    (void)drv;
+    int x, y;
+    bool pressed;
+    touch_get_state(&x, &y, &pressed);
+    if (pressed) {
+        data->point.x = x;
+        data->point.y = y;
+        data->state = LV_INDEV_STATE_PR;
+    } else {
+        data->state = LV_INDEV_STATE_REL;
+    }
+}
+
 static void lvgl_task(void *arg)
 {
     /* lv_timer_handler_run_in_period: idiomatic LVGL pattern, sabit periyot */
@@ -100,6 +117,13 @@ void lvgl_port_init(void)
     drv.flush_cb = flush_cb;
     drv.draw_buf = &draw_buf;
     lv_disp_drv_register(&drv);
+
+    /* Touch indev — pointer type, GT911'den okur */
+    static lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);
+    indev_drv.type    = LV_INDEV_TYPE_POINTER;
+    indev_drv.read_cb = touch_read_cb;
+    lv_indev_drv_register(&indev_drv);
 
     const esp_timer_create_args_t targs = { .callback = tick_cb, .name = "lvtick" };
     esp_timer_handle_t tick;

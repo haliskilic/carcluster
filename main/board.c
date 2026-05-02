@@ -22,18 +22,15 @@ static const char *TAG = "board";
 #define I2C_FREQ_HZ        400000
 
 #define CH422G_ADDR_WR     0x24
-#define BIT_BL_EN   (1 << 2)
-#define BIT_LCD_RST (1 << 3)
-#define BIT_LCD_VDD (1 << 6)
+/* BIT_* tanımları board.h'de — touch.c da paylaşıyor */
 
 static esp_lcd_panel_handle_t s_panel;
 static uint8_t s_ch422g = 0;
 static SemaphoreHandle_t s_ch422g_mutex = NULL;
 
 /* CH422G I2C write — shadow byte + bus operasyonu mutex altında.
- * İleride başka task (touch UI / backlight PWM) bu yazıcıya erişirse race
- * koruma garantili. Şu anda sadece board_init kullanıyor ama defensive. */
-static void ch422g_write(uint8_t set_mask, uint8_t clr_mask)
+ * Public API: touch.c TP_RST için, ileride backlight PWM vs. */
+void board_ch422g_write(uint8_t set_mask, uint8_t clr_mask)
 {
     if (s_ch422g_mutex) xSemaphoreTake(s_ch422g_mutex, portMAX_DELAY);
     s_ch422g |=  set_mask;
@@ -63,10 +60,10 @@ void board_init(void)
         abort();
     }
     i2c_init();
-    ch422g_write(BIT_LCD_VDD | BIT_LCD_RST, 0);  vTaskDelay(pdMS_TO_TICKS(20));
-    ch422g_write(0, BIT_LCD_RST);                 vTaskDelay(pdMS_TO_TICKS(20));
-    ch422g_write(BIT_LCD_RST, 0);                 vTaskDelay(pdMS_TO_TICKS(120));
-    ch422g_write(BIT_BL_EN, 0);
+    board_ch422g_write(BIT_LCD_VDD | BIT_LCD_RST, 0);  vTaskDelay(pdMS_TO_TICKS(20));
+    board_ch422g_write(0, BIT_LCD_RST);                 vTaskDelay(pdMS_TO_TICKS(20));
+    board_ch422g_write(BIT_LCD_RST, 0);                 vTaskDelay(pdMS_TO_TICKS(120));
+    board_ch422g_write(BIT_BL_EN, 0);
     ESP_LOGI(TAG, "CH422G + LCD power + backlight OK");
 
     /* RGB panel — 800x480 16-bit, ST7262 */

@@ -3,6 +3,8 @@
 #include "icons.h"
 #include "lvgl_port.h"
 #include "cpu_meter.h"
+#include "trip.h"
+#include "board.h"
 #include "lvgl.h"
 #include <stdio.h>
 #include <string.h>
@@ -52,6 +54,9 @@ static lv_obj_t *lbl_trip_km, *lbl_trip_time, *lbl_trip_l100, *lbl_trip_range;
 #define SPD_N_LABELS  13
 static lv_obj_t *rpm_tick_labels[RPM_N_LABELS];
 static lv_obj_t *spd_tick_labels[SPD_N_LABELS];
+
+/* Forward decl — settings modal handler dosyanın altında tanımlı */
+static void ui_attach_long_press_handler(void);
 
 /* Label durum renkleri — cool navy temasıyla uyumlu, ikisi clearly birbirinden farklı.
  *   DIM    : steel-blue gray, band üzerinde "soluk" (still readable, not screaming)
@@ -497,6 +502,9 @@ void ui_build(void)
     /* Telltale animasyonu — periyodik 50 ms timer, tüm icon'lar sync'd.
      * İlk 2 sn boot check (tüm icon'lar ON) burada otomatik başlar. */
     icons_anim_init();
+
+    /* Touch UI — ekrana long-press'e settings modal aç */
+    ui_attach_long_press_handler();
 }
 
 void ui_refresh(void)
@@ -647,5 +655,106 @@ void ui_set_ip(const char *ip)
     char buf[40];
     snprintf(buf, sizeof(buf), "WiFi: %s :23", ip);
     lv_label_set_text(lbl_ip, buf);
+}
+
+/* ============================================================
+ * Settings modal — long-press anywhere on screen → settings
+ * ============================================================ */
+
+static lv_obj_t *s_settings_modal = NULL;
+
+static void modal_close(lv_event_t *e)
+{
+    (void)e;
+    if (s_settings_modal) {
+        lv_obj_del(s_settings_modal);
+        s_settings_modal = NULL;
+    }
+}
+
+static void on_trip_reset(lv_event_t *e)
+{
+    trip_reset();
+    modal_close(e);
+}
+
+static void show_settings_modal(void)
+{
+    if (s_settings_modal) return;
+
+    /* Full-screen semi-transparent overlay */
+    s_settings_modal = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(s_settings_modal);
+    lv_obj_set_size(s_settings_modal, LCD_H_RES, LCD_V_RES);
+    lv_obj_set_pos(s_settings_modal, 0, 0);
+    lv_obj_set_style_bg_color(s_settings_modal, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(s_settings_modal, LV_OPA_70, 0);
+    lv_obj_clear_flag(s_settings_modal, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_settings_modal, LV_OBJ_FLAG_CLICKABLE);  /* event'leri tutsun */
+
+    /* Centered panel */
+    lv_obj_t *panel = lv_obj_create(s_settings_modal);
+    lv_obj_remove_style_all(panel);
+    lv_obj_set_size(panel, 420, 300);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, C_PANEL, 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, C_RING, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Title */
+    lv_obj_t *title = lv_label_create(panel);
+    lv_label_set_text(title, "SETTINGS");
+    lv_obj_set_style_text_color(title, C_FG, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 18);
+
+    /* Reset Trip button */
+    lv_obj_t *btn_trip = lv_btn_create(panel);
+    lv_obj_set_size(btn_trip, 280, 60);
+    lv_obj_align(btn_trip, LV_ALIGN_CENTER, 0, -32);
+    lv_obj_set_style_bg_color(btn_trip, C_ACCENT, 0);
+    lv_obj_set_style_radius(btn_trip, 8, 0);
+    lv_obj_t *l1 = lv_label_create(btn_trip);
+    lv_label_set_text(l1, "Reset Trip");
+    lv_obj_set_style_text_color(l1, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_text_font(l1, &lv_font_montserrat_18, 0);
+    lv_obj_center(l1);
+    lv_obj_add_event_cb(btn_trip, on_trip_reset, LV_EVENT_CLICKED, NULL);
+
+    /* Close button */
+    lv_obj_t *btn_close = lv_btn_create(panel);
+    lv_obj_set_size(btn_close, 280, 60);
+    lv_obj_align(btn_close, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_style_bg_color(btn_close, C_DIM, 0);
+    lv_obj_set_style_radius(btn_close, 8, 0);
+    lv_obj_t *l2 = lv_label_create(btn_close);
+    lv_label_set_text(l2, "Close");
+    lv_obj_set_style_text_color(l2, C_FG, 0);
+    lv_obj_set_style_text_font(l2, &lv_font_montserrat_18, 0);
+    lv_obj_center(l2);
+    lv_obj_add_event_cb(btn_close, modal_close, LV_EVENT_CLICKED, NULL);
+
+    /* Hint */
+    lv_obj_t *hint = lv_label_create(panel);
+    lv_label_set_text(hint, "long-press cluster to open");
+    lv_obj_set_style_text_color(hint, C_DIM, 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -12);
+}
+
+static void on_screen_long_press(lv_event_t *e)
+{
+    (void)e;
+    show_settings_modal();
+}
+
+static void ui_attach_long_press_handler(void)
+{
+    lv_obj_t *scr = lv_scr_act();
+    lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(scr, on_screen_long_press, LV_EVENT_LONG_PRESSED, NULL);
 }
 
