@@ -416,11 +416,21 @@ INT to high-Z (input floating) → wait 50ms → first I2C read
 
 **Workaround**: 5V/2A USB adaptör + 470 µF bulk cap (Waveshare 4.3" sibling için belgelenen fix, V1.2'de de geçerli).
 
-### LCD power-on sequence (datasheet T2 ≥ 250ms) — v0.7.2'de düzeltildi
+### LCD power-on sequence — V1.2 datasheet-uyumsuz sıra GEREKLİ
 
-**Sebep**: ST7262 datasheet sayfa 90 — backlight enable, ilk DCLK output'tan **min 250ms sonra** verilmeli. Önceki kod (v0.7.1 ve öncesi) BL_EN'i panel başlamadan ÖNCE açıyordu → uzun vadede panel latch-up riski.
+**Bulgular** (v0.7.2'de denendi, v0.7.4'te geri alındı): ST7262 datasheet sayfa 90 BL_EN'in `DCLK output + 250ms` sonrası verilmesini öneriyor. Datasheet-uyumlu sıra (BL_EN panel init sonrası) **V1.2'de display'i karartıyor**.
 
-**Düzeltilen sıra (v0.7.2)**: VDD on → LCD_RST cycle → `esp_lcd_new_rgb_panel` (DCLK aktif) → 250 ms wait → BL_EN. Ekranda kısa bir kararma sonrası açılış görüyorsanız bu beklenen davranış.
+**V1.2 için çalışan sıra** (orijinal Waveshare örneklerinden ve bizim test'lerden):
+```
+1. board_ch422g_write(VDD|RST, 0)  delay 20 ms
+2. board_ch422g_write(0, RST)       delay 20 ms
+3. board_ch422g_write(RST, 0)        delay 120 ms
+4. board_ch422g_write(BL_EN, 0)     ← BL_EN, panel init'ten ÖNCE
+5. esp_lcd_new_rgb_panel(&cfg, &handle)
+6. esp_lcd_panel_init(handle)
+```
+
+**Pratik > teori**: V1.2 board'unda gizli init-sequence bağımlılıkları var, datasheet ihlali olsa bile bu sıra ile düzgün çalışıyor.
 
 ### Önerilen donanım modifikasyonları (V1.2 board)
 
