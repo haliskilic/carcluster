@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.8.0** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.8.1** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -475,6 +475,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.8** | C8 yazılım: idle sleep (demo paused + 30s no-touch → backlight off, touch wake) + Settings "About" reset count breakdown (boots/panic/wdt/brownout, panic|wdt > 0 ise amber renk uyarı) |
 | **v0.7.9** | B1: Theme system — 4 preset palette (Blue/Orange/Yellow/Red), theme.c globals + ui.c extern, settings'te picker, NVS u8 persist, reboot-required apply |
 | **v0.8.0** | B2-B3-B4-B7-B8: Tabbed settings modal (lv_tabview, 4 sekme). **B2 Units** (Metric/Imperial, NVS, reboot apply). **B3 Trip B** (bağımsız ikinci sayaç, paralel tick, NVS). **B7 Limits** (RPM redline 5000-9000 + coolant warn 90-120°C sliders). **B8 Stats** (max speed/longest trip/total fuel/runtime, NVS). **B4 Diag** (heap, PSRAM, uptime, reset counts, Trip B + lifetime stats görünümü) |
+| **v0.8.1** | I²C bus recovery — soft reset (idf.py flash, esp_restart) sonrası GT911/CH422G önceki transaction'da takılı kalmış olabilir. board.c i2c_init() öncesi NXP UM10204 sequence: SDA released, SCL 9 puls + STOP. Pin'ler önce HIGH set'lenir SONRA OUTPUT_OD config (LOW pulse sızdırma yok). |
 
 ```bash
 git tag -l    # tüm versiyonlar
