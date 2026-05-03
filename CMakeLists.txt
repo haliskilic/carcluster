@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.9.0 (C1 — WiFi STA + OTA: NVS credentials, HTTP firmware update, factory+ota_0+ota_1 partitions)
-set(PROJECT_VER "0.9.0")
+# v0.9.1 (UI — alt köşede WiFi 4-bar signal indicator + canlı IP/dBm; static "DEMO" kaldırıldı)
+set(PROJECT_VER "0.9.1")
 project(carcluster)

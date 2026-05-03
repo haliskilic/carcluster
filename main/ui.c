@@ -39,6 +39,7 @@ static lv_meter_indicator_t *ind_rpm_needle;
 static lv_meter_indicator_t *ind_speed_arc, *ind_speed_needle;
 static lv_obj_t *lbl_speed_val;   /* RPM ortadaki sayı kaldırıldı */
 static lv_obj_t *lbl_gear, *lbl_km, *lbl_ip;
+static lv_obj_t *wifi_bar[4];   /* 4 dikey bar — RSSI gösterimi */
 static lv_obj_t *bar_fuel, *bar_temp, *lbl_fuel_pct, *lbl_temp_val;
 static lv_obj_t *lbl_fps;
 
@@ -556,11 +557,31 @@ void ui_build(void)
     lv_obj_set_style_text_font(odo_unit, &lv_font_inter_18, 0);
     lv_obj_align(odo_unit, LV_ALIGN_BOTTOM_MID, 60, -22);
 
+    /* WiFi signal — 4 dikey bar, soldan sağa artan boy. RSSI'ye göre kaç tanesi
+     * "lit" (renkli) ui_refresh'te belirlenir. Inter font'ta WiFi glyph yok,
+     * native object çiziyoruz. */
+    int bar_x0 = 8;
+    int bar_w  = 4;
+    int bar_gap = 2;
+    for (int i = 0; i < 4; i++) {
+        int h = 4 + i * 3;            /* 4, 7, 10, 13 px */
+        wifi_bar[i] = lv_obj_create(scr);
+        lv_obj_remove_style_all(wifi_bar[i]);
+        lv_obj_set_size(wifi_bar[i], bar_w, h);
+        lv_obj_set_pos(wifi_bar[i],
+                       bar_x0 + i * (bar_w + bar_gap),
+                       LCD_V_RES - 6 - h);
+        lv_obj_set_style_bg_color(wifi_bar[i], C_DIM, 0);
+        lv_obj_set_style_bg_opa(wifi_bar[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(wifi_bar[i], 1, 0);
+    }
+
+    /* IP + dBm — wifi_get_status'tan canlı çekilir */
     lbl_ip = lv_label_create(scr);
-    lv_obj_set_style_text_color(lbl_ip, C_ACCENT, 0);
+    lv_obj_set_style_text_color(lbl_ip, C_DIM, 0);
     lv_obj_set_style_text_font(lbl_ip, &lv_font_inter_14, 0);
-    lv_label_set_text(lbl_ip, "WiFi: ...");
-    lv_obj_align(lbl_ip, LV_ALIGN_BOTTOM_LEFT, 8, -4);
+    lv_label_set_text(lbl_ip, "--");
+    lv_obj_align(lbl_ip, LV_ALIGN_BOTTOM_LEFT, bar_x0 + 4*(bar_w+bar_gap) + 4, -4);
 
     lbl_fps = lv_label_create(scr);
     lv_obj_set_style_text_color(lbl_fps, C_AMBER, 0);
@@ -717,6 +738,48 @@ void ui_refresh(void)
         prev_range = s.range_km;
     }
 
+    /* WiFi göstergesi — saniyede 1 update (RSSI yavaş değişir, flicker olmasın).
+     *   bars_lit  = 4 (mükemmel, RSSI ≥ -50)
+     *               3 (-50..-65)
+     *               2 (-65..-75)
+     *               1 (-75'ten zayıf, hâlâ bağlı)
+     *               0 (bağlı değil) */
+    static int64_t last_wifi_us = 0;
+    static int     prev_rssi    = -127;
+    static int     prev_state   = -1;
+    if (now_us - last_wifi_us >= 1000000) {
+        last_wifi_us = now_us;
+        wifi_status_t w; wifi_get_status(&w);
+        if (w.state != prev_state || w.rssi != prev_rssi) {
+            prev_state = w.state;
+            prev_rssi  = w.rssi;
+
+            int bars = 0;
+            lv_color_t lit = C_DIM;
+            if (w.state == WIFI_STATE_CONNECTED) {
+                if      (w.rssi >= -50) { bars = 4; lit = C_GREEN; }
+                else if (w.rssi >= -65) { bars = 3; lit = C_GREEN; }
+                else if (w.rssi >= -75) { bars = 2; lit = C_AMBER; }
+                else                    { bars = 1; lit = C_RED;   }
+
+                char wbuf[40];
+                snprintf(wbuf, sizeof(wbuf), "%s  %d dBm", w.ip, w.rssi);
+                lv_label_set_text(lbl_ip, wbuf);
+                lv_obj_set_style_text_color(lbl_ip, C_FG, 0);
+            } else if (w.state == WIFI_STATE_CONNECTING) {
+                lv_label_set_text(lbl_ip, "connecting...");
+                lv_obj_set_style_text_color(lbl_ip, C_DIM, 0);
+            } else {
+                lv_label_set_text(lbl_ip, "--");
+                lv_obj_set_style_text_color(lbl_ip, C_DIM, 0);
+            }
+            for (int i = 0; i < 4; i++) {
+                lv_obj_set_style_bg_color(wifi_bar[i],
+                    i < bars ? lit : C_DIM, 0);
+            }
+        }
+    }
+
     /* Telltale modları:
      *   BLINK : turn signals (sinyal/dörtlü)
      *   PULSE : kritik kırmızılar (brake, oil, coolant, engine MIL)
@@ -740,12 +803,10 @@ void ui_refresh(void)
     icon_set_mode(ic_fuel_low, fl              ? ICON_MODE_ON    : ICON_MODE_OFF);
 }
 
-void ui_set_ip(const char *ip)
-{
-    char buf[40];
-    snprintf(buf, sizeof(buf), "WiFi: %s :23", ip);
-    lv_label_set_text(lbl_ip, buf);
-}
+/* ui_set_ip kaldırıldı — WiFi label artık ui_refresh içinde wifi_get_status'tan
+ * canlı çekiliyor (RSSI dahil). Header'da deklarasyon backward compat için kalır
+ * ama no-op'a dönüştürüldü. */
+void ui_set_ip(const char *ip) { (void)ip; }
 
 /* ============================================================
  * Settings modal — long-press anywhere on screen → settings
