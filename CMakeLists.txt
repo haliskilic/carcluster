@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.9.3 (boot splash: HK Digital Clusters logo PNG (RGB565 embed) — monogram replaced)
-set(PROJECT_VER "0.9.3")
+# v0.9.4 (boot splash logo refresh — yeniden ortalanmış HK Digital Clusters art)
+set(PROJECT_VER "0.9.4")
 project(carcluster)
