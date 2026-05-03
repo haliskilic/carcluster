@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.9.3** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.9.4** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -529,6 +529,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.9.1** | UI — alt-sol köşede **WiFi 4-bar signal indicator** + canlı IP/dBm. Native lv_obj rect bar (Inter font'ta WiFi glyph yok, manuel çiziliyor). RSSI bant: ≥-50→4 bar yeşil, ≥-65→3 bar yeşil, ≥-75→2 bar amber, <-75→1 bar kırmızı. Static "WiFi: DEMO :23" kaldırıldı, ui_set_ip no-op'a indirgendi. ui_refresh içinde 1 Hz throttled update, RSSI veya state değişmediyse widget dokunulmaz. |
 | **v0.9.2** | B5 — boot splash. **splash.c**: tam ekran siyah overlay + ortada beyaz "HK" monogram (lv_obj rect + lv_line diagonal'lar — Inter font'sız native render). lvgl_port_lock altında ui_build sonrasında splash_show çağrılır, tek frame'de cluster üzerine kapanır; 1500 ms görünür kalır, splash_hide ile atomik reveal. Cluster gelme süresi DEĞİŞMEZ — paralel build, kullanıcı algıladığı boot süresi azalır (siyah ekran yerine logo). cmd_listener_start splash öncesi taşındı (auto-screenshot tooling splash'ı yakalayabilsin). |
 | **v0.9.3** | Boot splash logo upgrade. Monogram → **HK Digital Clusters** PNG (800×480, neon mavi/yeşil çevre kartı estetik). **tools/png_to_lvgl.py**: PNG → RGB565 little-endian C array, lv_img_dsc_t header. **main/splash_logo.c** (auto-generated, 4.8 MB source → 768 KB binary embed). splash.c lv_img widget'la blit eder. Binary 1.97 MB / 2 MB OTA partition (%6 free). Aynı pipeline gelecekte tema-spesifik logolar veya ek asset'ler için kullanılabilir. |
+| **v0.9.4** | Boot splash logo refresh — `docs/img/bootsplash.png` daha temiz / orta hizalı sürümle güncellendi, `tools/png_to_lvgl.py` ile `main/splash_logo.c` yeniden üretildi. Kod değişikliği yok, sadece embed asset farklı. |
 
 ```bash
 git tag -l    # tüm versiyonlar
