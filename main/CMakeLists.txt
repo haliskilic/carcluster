@@ -18,6 +18,7 @@ idf_component_register(
         "cmd_listener.c"
         "wifi.c"
         "ota.c"
+        "splash.c"
         "fonts/lv_font_inter_14.c"
         "fonts/lv_font_inter_18.c"
         "fonts/lv_font_inter_24.c"
