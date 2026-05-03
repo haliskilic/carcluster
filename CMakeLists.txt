@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.9.4 (boot splash logo refresh — yeniden ortalanmış HK Digital Clusters art)
-set(PROJECT_VER "0.9.4")
+# v0.9.5 (UI rename: "Theme" → "View" — cluster terminolojisinde view daha tutarlı)
+set(PROJECT_VER "0.9.5")
 project(carcluster)
