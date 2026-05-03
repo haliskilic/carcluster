@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.8.2** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.9.0** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -518,6 +518,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.8.0** | B2-B3-B4-B7-B8: Tabbed settings modal (lv_tabview, 4 sekme). **B2 Units** (Metric/Imperial, NVS, reboot apply). **B3 Trip B** (bağımsız ikinci sayaç, paralel tick, NVS). **B7 Limits** (RPM redline 5000-9000 + coolant warn 90-120°C sliders). **B8 Stats** (max speed/longest trip/total fuel/runtime, NVS). **B4 Diag** (heap, PSRAM, uptime, reset counts, Trip B + lifetime stats görünümü) |
 | **v0.8.1** | I²C bus recovery — soft reset (idf.py flash, esp_restart) sonrası GT911/CH422G önceki transaction'da takılı kalmış olabilir. board.c i2c_init() öncesi NXP UM10204 sequence: SDA released, SCL 9 puls + STOP. Pin'ler önce HIGH set'lenir SONRA OUTPUT_OD config (LOW pulse sızdırma yok). |
 | **v0.8.2** | Auto-screenshot debug interface. **screenshot.c**: LVGL snapshot → RGB565 → inline base64 → printf via USB-Serial-JTAG. **cmd_listener.c**: USB-CDC RX dinler, `SHOT MAIN` / `SHOT MODAL <tab>` komutları üzerine ui_cmd_show_modal/close + screenshot_dump_uart tetikler. **tools/auto_screenshots.py**: 5 ekranı sırayla 1-2 dk içinde PNG'ye yakalar — her release sonrası dokümantasyonu otomatik tazeleme. |
+| **v0.9.0** | C1 — WiFi STA + OTA. **wifi.c**: NVS credentials, otomatik bağlan + reconnect + RSSI track. **ota.c**: HTTP firmware indir, esp_ota_write, set_boot_partition + restart. Custom partition table (factory + ota_0 + ota_1, 2 MB her biri, anti-brick). Diag sekmesinde WiFi durumu (SSID/IP/RSSI). UART komutları: `WIFI SET <ssid> <pass>`, `WIFI STATUS`, `OTA URL <http>`, `OTA START`, `OTA STATUS`. **tools/ota_serve.py**: build/carcluster.bin için yerel HTTP server. WiFi RX buffer'lar PSRAM'de + AMPDU off → internal heap budgeti korunur. |
 
 ```bash
 git tag -l    # tüm versiyonlar
@@ -546,8 +547,9 @@ git checkout v0.7.0   # belirli sürüm
 - ✅ **B4**: Diagnostic ekranı (heap/PSRAM/stats görünümü) — v0.8.0 tamamlandı
 - ✅ **B7**: Custom limits (RPM redline + coolant warn) — v0.8.0 tamamlandı
 - ✅ **B8**: Lifetime stats (max speed, longest trip, total fuel) — v0.8.0 tamamlandı
+- ✅ **C1**: WiFi STA + OTA — v0.9.0 tamamlandı (kablosuz flash, custom partition table, anti-brick)
 
-**Yazılım-only kalan kısa liste**: B5 splash screen, B6 touch kalibrasyon ekranı, C1 WiFi+OTA, C2 GitHub Actions CI, D1 odometer flip animasyonu, D2 shift hint. Sıradaki büyük iş donanım (CAN-bus / OBD-II).
+**Yazılım-only kalan kısa liste**: B5 splash, B6 touch kalibrasyon, C2 GitHub Actions CI, C3 stub CAN driver, D3 demo drive cycle, D4 odometer flip, D5 shift hint, font cosmetic (° + • glyph). Sıradaki büyük iş donanım (CAN-bus / OBD-II).
 
 ### Donanım gerektirir
 - [ ] **C8 (PWM)**: Backlight dimming — V1.2 stock'ta sadece on/off (CH422G EXIO2). Community GPIO16 ledc claim doğrulanmadı.

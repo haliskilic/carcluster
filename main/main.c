@@ -17,6 +17,7 @@
 #include "units.h"
 #include "limits.h"
 #include "cmd_listener.h"
+#include "wifi.h"
 #include "idle.h"
 
 static const char *TAG = "carcluster";
@@ -150,8 +151,11 @@ void app_main(void)
     /* Idle sleep — demo paused + 30s no touch → backlight off, touch wake */
     idle_init();
 
-    /* Auto-screenshot debug interface — host'tan SHOT komutları dinler */
+    /* Auto-screenshot + WiFi/OTA debug interface — host'tan komut dinler */
     cmd_listener_start();
+
+    /* WiFi STA — credentials NVS'te varsa otomatik bağlan, yoksa pas geç */
+    wifi_init();
 
     ESP_LOGI(TAG, "Ready.");
 }

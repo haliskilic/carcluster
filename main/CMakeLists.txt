@@ -16,6 +16,8 @@ idf_component_register(
         "limits.c"
         "screenshot.c"
         "cmd_listener.c"
+        "wifi.c"
+        "ota.c"
         "fonts/lv_font_inter_14.c"
         "fonts/lv_font_inter_18.c"
         "fonts/lv_font_inter_24.c"
@@ -29,4 +31,9 @@ idf_component_register(
         nvs_flash
         app_update
         esp_app_format
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_http_client
+        esp_https_ota
 )
