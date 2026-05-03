@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.9.2** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.9.3** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -14,10 +14,11 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 Tüm ekranlar `tools/auto_screenshots.py` ile cihazdan **otomatik** alınır
 (USB-Serial-JTAG üzerinde komut → snapshot → base64 RGB565 dump → host PNG).
 
-### Boot splash (HK monogram)
+### Boot splash (HK Digital Clusters logo)
 ![splash](docs/img/splash.png)
 
-Cihaz açılırken kullanıcı siyah ekran yerine "HK" logo görür. Cluster
+Cihaz açılırken kullanıcı siyah ekran yerine HK Digital Clusters logo'sunu
+görür (`docs/img/bootsplash.png` → RGB565 C array, ~768 KB embed). Cluster
 arka planda paralel build olur, splash 1500 ms sonra atomik kalkar.
 
 ### Ana cluster
@@ -527,6 +528,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.9.0** | C1 — WiFi STA + OTA. **wifi.c**: NVS credentials, otomatik bağlan + reconnect + RSSI track. **ota.c**: HTTP firmware indir, esp_ota_write, set_boot_partition + restart. Custom partition table (factory + ota_0 + ota_1, 2 MB her biri, anti-brick). Diag sekmesinde WiFi durumu (SSID/IP/RSSI). UART komutları: `WIFI SET <ssid> <pass>`, `WIFI STATUS`, `OTA URL <http>`, `OTA START`, `OTA STATUS`. **tools/ota_serve.py**: build/carcluster.bin için yerel HTTP server. WiFi RX buffer'lar PSRAM'de + AMPDU off → internal heap budgeti korunur. |
 | **v0.9.1** | UI — alt-sol köşede **WiFi 4-bar signal indicator** + canlı IP/dBm. Native lv_obj rect bar (Inter font'ta WiFi glyph yok, manuel çiziliyor). RSSI bant: ≥-50→4 bar yeşil, ≥-65→3 bar yeşil, ≥-75→2 bar amber, <-75→1 bar kırmızı. Static "WiFi: DEMO :23" kaldırıldı, ui_set_ip no-op'a indirgendi. ui_refresh içinde 1 Hz throttled update, RSSI veya state değişmediyse widget dokunulmaz. |
 | **v0.9.2** | B5 — boot splash. **splash.c**: tam ekran siyah overlay + ortada beyaz "HK" monogram (lv_obj rect + lv_line diagonal'lar — Inter font'sız native render). lvgl_port_lock altında ui_build sonrasında splash_show çağrılır, tek frame'de cluster üzerine kapanır; 1500 ms görünür kalır, splash_hide ile atomik reveal. Cluster gelme süresi DEĞİŞMEZ — paralel build, kullanıcı algıladığı boot süresi azalır (siyah ekran yerine logo). cmd_listener_start splash öncesi taşındı (auto-screenshot tooling splash'ı yakalayabilsin). |
+| **v0.9.3** | Boot splash logo upgrade. Monogram → **HK Digital Clusters** PNG (800×480, neon mavi/yeşil çevre kartı estetik). **tools/png_to_lvgl.py**: PNG → RGB565 little-endian C array, lv_img_dsc_t header. **main/splash_logo.c** (auto-generated, 4.8 MB source → 768 KB binary embed). splash.c lv_img widget'la blit eder. Binary 1.97 MB / 2 MB OTA partition (%6 free). Aynı pipeline gelecekte tema-spesifik logolar veya ek asset'ler için kullanılabilir. |
 
 ```bash
 git tag -l    # tüm versiyonlar

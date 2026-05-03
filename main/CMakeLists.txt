@@ -19,6 +19,7 @@ idf_component_register(
         "wifi.c"
         "ota.c"
         "splash.c"
+        "splash_logo.c"
         "fonts/lv_font_inter_14.c"
         "fonts/lv_font_inter_18.c"
         "fonts/lv_font_inter_24.c"

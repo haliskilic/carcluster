@@ -148,8 +148,7 @@ void app_main(void)
     splash_show();           /* en son yaratıldı = en üstte render edilir */
     lvgl_port_unlock();
 
-    /* Splash 1500 ms — branding + boot uyarısı süresi (cluster zaten arkada
-     * hazır, kapanışı atomik). */
+    /* Splash 1500 ms — branding süresi (cluster zaten arkada hazır). */
     vTaskDelay(pdMS_TO_TICKS(1500));
 
     lvgl_port_lock();
