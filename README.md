@@ -5,7 +5,48 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.8.1** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.8.2** ([releases](https://github.com/haliskilic/carcluster/releases))
+
+---
+
+## Ekran görüntüleri
+
+Tüm ekranlar `tools/auto_screenshots.py` ile cihazdan **otomatik** alınır
+(USB-Serial-JTAG üzerinde komut → snapshot → base64 RGB565 dump → host PNG).
+
+### Ana cluster
+![main](docs/img/main.png)
+
+RPM tachometer (sol), speedometer (sağ), trip panel (orta), 12 telltale
+(üst), ODO + WiFi + R-FPS/DR-FPS/CPU göstergeleri.
+
+### Settings — Trip
+![modal-trip](docs/img/modal-trip.png)
+
+Reset Trip A / Reset Trip B / Pause Demo butonları.
+
+### Settings — Display
+![modal-display](docs/img/modal-display.png)
+
+4 tema (Blue/Orange/Yellow/Red) + Metric/Imperial unit toggle. Aktif seçim
+vurgulu, değişimler NVS'e yazılır, reboot'ta uygulanır.
+
+### Settings — Limits
+![modal-limits](docs/img/modal-limits.png)
+
+RPM redline (5000-9000) + Coolant warn (90-120°C) slider'ları. Save Limits
+butonu NVS'e yazar — redline gauge band'ı reboot sonrası, coolant warn live
+uygulanır.
+
+### Settings — Diag
+![modal-diag](docs/img/modal-diag.png)
+
+Version, reset count breakdown (panic/wdt > 0 ise amber uyarı), free
+heap/PSRAM, uptime, Trip B ve lifetime stats (max speed, longest trip,
+total fuel, runtime).
+
+> Yeni feature eklendiğinde: `python3 tools/auto_screenshots.py` ile tüm
+> ekranlar 1-2 dakika içinde yenilenir, README değişmez (aynı dosya yolları).
 
 ---
 
@@ -476,6 +517,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.7.9** | B1: Theme system — 4 preset palette (Blue/Orange/Yellow/Red), theme.c globals + ui.c extern, settings'te picker, NVS u8 persist, reboot-required apply |
 | **v0.8.0** | B2-B3-B4-B7-B8: Tabbed settings modal (lv_tabview, 4 sekme). **B2 Units** (Metric/Imperial, NVS, reboot apply). **B3 Trip B** (bağımsız ikinci sayaç, paralel tick, NVS). **B7 Limits** (RPM redline 5000-9000 + coolant warn 90-120°C sliders). **B8 Stats** (max speed/longest trip/total fuel/runtime, NVS). **B4 Diag** (heap, PSRAM, uptime, reset counts, Trip B + lifetime stats görünümü) |
 | **v0.8.1** | I²C bus recovery — soft reset (idf.py flash, esp_restart) sonrası GT911/CH422G önceki transaction'da takılı kalmış olabilir. board.c i2c_init() öncesi NXP UM10204 sequence: SDA released, SCL 9 puls + STOP. Pin'ler önce HIGH set'lenir SONRA OUTPUT_OD config (LOW pulse sızdırma yok). |
+| **v0.8.2** | Auto-screenshot debug interface. **screenshot.c**: LVGL snapshot → RGB565 → inline base64 → printf via USB-Serial-JTAG. **cmd_listener.c**: USB-CDC RX dinler, `SHOT MAIN` / `SHOT MODAL <tab>` komutları üzerine ui_cmd_show_modal/close + screenshot_dump_uart tetikler. **tools/auto_screenshots.py**: 5 ekranı sırayla 1-2 dk içinde PNG'ye yakalar — her release sonrası dokümantasyonu otomatik tazeleme. |
 
 ```bash
 git tag -l    # tüm versiyonlar

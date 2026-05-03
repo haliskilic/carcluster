@@ -14,6 +14,8 @@ idf_component_register(
         "theme.c"
         "units.c"
         "limits.c"
+        "screenshot.c"
+        "cmd_listener.c"
         "fonts/lv_font_inter_14.c"
         "fonts/lv_font_inter_18.c"
         "fonts/lv_font_inter_24.c"

@@ -16,6 +16,7 @@
 #include "theme.h"
 #include "units.h"
 #include "limits.h"
+#include "cmd_listener.h"
 #include "idle.h"
 
 static const char *TAG = "carcluster";
@@ -148,6 +149,9 @@ void app_main(void)
 
     /* Idle sleep — demo paused + 30s no touch → backlight off, touch wake */
     idle_init();
+
+    /* Auto-screenshot debug interface — host'tan SHOT komutları dinler */
+    cmd_listener_start();
 
     ESP_LOGI(TAG, "Ready.");
 }
