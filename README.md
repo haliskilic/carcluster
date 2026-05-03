@@ -5,7 +5,7 @@ ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
 > **Yazılım**: ESP-IDF v5.3.2 + LVGL v8.4  
 > **Performans**: R-FPS ~200, DR-FPS 38 (panel-limited), tear-free, ~626 KB PSRAM snapshot cache  
-> **Mevcut sürüm**: **v0.9.0** ([releases](https://github.com/haliskilic/carcluster/releases))
+> **Mevcut sürüm**: **v0.9.1** ([releases](https://github.com/haliskilic/carcluster/releases))
 
 ---
 
@@ -519,6 +519,7 @@ Schematic incelemesi sonrası bulunan eksiklikler:
 | **v0.8.1** | I²C bus recovery — soft reset (idf.py flash, esp_restart) sonrası GT911/CH422G önceki transaction'da takılı kalmış olabilir. board.c i2c_init() öncesi NXP UM10204 sequence: SDA released, SCL 9 puls + STOP. Pin'ler önce HIGH set'lenir SONRA OUTPUT_OD config (LOW pulse sızdırma yok). |
 | **v0.8.2** | Auto-screenshot debug interface. **screenshot.c**: LVGL snapshot → RGB565 → inline base64 → printf via USB-Serial-JTAG. **cmd_listener.c**: USB-CDC RX dinler, `SHOT MAIN` / `SHOT MODAL <tab>` komutları üzerine ui_cmd_show_modal/close + screenshot_dump_uart tetikler. **tools/auto_screenshots.py**: 5 ekranı sırayla 1-2 dk içinde PNG'ye yakalar — her release sonrası dokümantasyonu otomatik tazeleme. |
 | **v0.9.0** | C1 — WiFi STA + OTA. **wifi.c**: NVS credentials, otomatik bağlan + reconnect + RSSI track. **ota.c**: HTTP firmware indir, esp_ota_write, set_boot_partition + restart. Custom partition table (factory + ota_0 + ota_1, 2 MB her biri, anti-brick). Diag sekmesinde WiFi durumu (SSID/IP/RSSI). UART komutları: `WIFI SET <ssid> <pass>`, `WIFI STATUS`, `OTA URL <http>`, `OTA START`, `OTA STATUS`. **tools/ota_serve.py**: build/carcluster.bin için yerel HTTP server. WiFi RX buffer'lar PSRAM'de + AMPDU off → internal heap budgeti korunur. |
+| **v0.9.1** | UI — alt-sol köşede **WiFi 4-bar signal indicator** + canlı IP/dBm. Native lv_obj rect bar (Inter font'ta WiFi glyph yok, manuel çiziliyor). RSSI bant: ≥-50→4 bar yeşil, ≥-65→3 bar yeşil, ≥-75→2 bar amber, <-75→1 bar kırmızı. Static "WiFi: DEMO :23" kaldırıldı, ui_set_ip no-op'a indirgendi. ui_refresh içinde 1 Hz throttled update, RSSI veya state değişmediyse widget dokunulmaz. |
 
 ```bash
 git tag -l    # tüm versiyonlar
