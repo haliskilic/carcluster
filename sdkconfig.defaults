@@ -40,8 +40,10 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
 CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
 
-# Daha büyük partition (LVGL build için)
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Custom partition table — OTA capable (factory + ota_0 + ota_1)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 
 # Main stack
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
@@ -65,5 +67,5 @@ CONFIG_LV_MEM_SIZE_KILOBYTES=128
 CONFIG_LV_USE_PERF_MONITOR=n
 CONFIG_LV_USE_LOG=n
 
-# NOT: WiFi/Telnet desteği bu sürümde devre dışı (internal demo mode).
-# WiFi/telnet kodu git history'de korunuyor, ihtiyaç olursa geri eklenebilir.
+# C1 — WiFi STA + OTA. Credentials NVS'te, UART komutla set edilir.
+# WiFi stack için ek RAM gerek (~50 KB internal heap).

@@ -1,11 +1,14 @@
 #include "cmd_listener.h"
 #include "ui.h"
 #include "screenshot.h"
+#include "wifi.h"
+#include "ota.h"
 #include "driver/usb_serial_jtag.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include <string.h>
+#include <stdio.h>
 
 static const char *TAG = "cmd";
 
@@ -42,6 +45,54 @@ static void dispatch(char *line)
         ui_cmd_show_modal(tab);
         vTaskDelay(pdMS_TO_TICKS(400));     /* render + tabview anim */
         screenshot_dump_uart();
+        return;
+    }
+    if (strncmp(line, "WIFI SET ", 9) == 0) {
+        /* WIFI SET <ssid> <pass>  — son token password (boşluk içerebilir? hayır,
+         * basit parse: ilk space'ten sonra ssid, ondan sonra space'ten sonra pass) */
+        char *ssid = line + 9;
+        char *space = strchr(ssid, ' ');
+        if (!space) {
+            printf("[WIFI ERROR usage: WIFI SET <ssid> <pass>]\n");
+            fflush(stdout);
+            return;
+        }
+        *space = 0;
+        char *pass = space + 1;
+        printf("[WIFI SET ssid=%s pass=%.*s***]\n", ssid,
+               (pass[0] && pass[1]) ? 2 : 0, pass);
+        fflush(stdout);
+        wifi_set_credentials(ssid, pass);
+        return;
+    }
+    if (strcmp(line, "WIFI STATUS") == 0) {
+        wifi_status_t st;
+        wifi_get_status(&st);
+        const char *names[] = {"DISABLED", "CONNECTING", "CONNECTED", "FAILED"};
+        printf("[WIFI STATUS state=%s ssid=%s ip=%s rssi=%d]\n",
+               names[st.state], st.ssid, st.ip, st.rssi);
+        fflush(stdout);
+        return;
+    }
+    if (strncmp(line, "OTA URL ", 8) == 0) {
+        ota_set_url(line + 8);
+        printf("[OTA URL ok %s]\n", line + 8);
+        fflush(stdout);
+        return;
+    }
+    if (strcmp(line, "OTA START") == 0) {
+        ota_start();
+        printf("[OTA STARTED]\n");
+        fflush(stdout);
+        return;
+    }
+    if (strcmp(line, "OTA STATUS") == 0) {
+        ota_status_t s;
+        ota_get_status(&s);
+        const char *names[] = {"IDLE", "DOWNLOADING", "VERIFYING", "DONE", "FAILED"};
+        printf("[OTA STATUS state=%s pct=%d msg=%s]\n",
+               names[s.state], s.pct, s.msg);
+        fflush(stdout);
         return;
     }
     ESP_LOGW(TAG, "unknown command");

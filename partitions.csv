@@ -1,0 +1,11 @@
+# Custom partition table — OTA-capable (factory + 2 OTA app slots).
+# 16 MB flash: nvs(24K) + otadata(8K) + phy(4K) + 3×app(2M) = ~6 MB. Bol margin.
+# Bootloader otadata'ya bakar; ota_0/ota_1 arasında geçiş yapar; kötü boot
+# durumunda factory'ye fallback eder (anti-brick güvence).
+# Name,     Type, SubType,  Offset,   Size,   Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+factory,    app,  factory,  0x20000,  2M,
+ota_0,      app,  ota_0,    ,         2M,
+ota_1,      app,  ota_1,    ,         2M,

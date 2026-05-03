@@ -21,6 +21,7 @@
 #include "units.h"
 #include "limits.h"
 #include "screenshot.h"
+#include "wifi.h"
 
 /* Renkler artık theme.c içinde global değişken — tema seçimine göre runtime'da
  * doldurulur. theme_apply(id) ui_build'den önce main.c'de çağrılır. */
@@ -1081,7 +1082,7 @@ static void build_tab_diag(lv_obj_t *t)
     /* Imperial mod'da display unit'leri kullan */
     int max_spd_disp = unit_conv_speed(s.max_speed_kmh);
 
-    char text[640];
+    char text[800];
     int p = 0;
     p += snprintf(text + p, sizeof(text) - p,
         "carcluster %s  (%s)\n", app->version, app->date);
@@ -1096,6 +1097,20 @@ static void build_tab_diag(lv_obj_t *t)
         (unsigned long)(free_psr / 1024));
     p += snprintf(text + p, sizeof(text) - p,
         "uptime: %llu s\n", esp_timer_get_time() / 1000000ULL);
+
+    /* WiFi durumu */
+    wifi_status_t w; wifi_get_status(&w);
+    const char *wnames[] = {"DISABLED", "CONNECTING", "CONNECTED", "FAILED"};
+    p += snprintf(text + p, sizeof(text) - p, "\n--- WIFI ---\n");
+    p += snprintf(text + p, sizeof(text) - p, "%s", wnames[w.state]);
+    if (w.ssid[0]) {
+        p += snprintf(text + p, sizeof(text) - p, "  %s", w.ssid);
+    }
+    if (w.state == WIFI_STATE_CONNECTED) {
+        p += snprintf(text + p, sizeof(text) - p, "  %s  %d dBm", w.ip, w.rssi);
+    }
+    p += snprintf(text + p, sizeof(text) - p, "\n");
+
     p += snprintf(text + p, sizeof(text) - p, "\n--- TRIP B ---\n");
     p += snprintf(text + p, sizeof(text) - p,
         "%lu.%01lu %s  •  %lum %lus\n",
