@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-# v0.8.1 (I²C bus recovery — soft reset sonrası slave stale state temizler)
-set(PROJECT_VER "0.8.1")
+# v0.8.2 (auto-screenshot via cmd_listener + screenshot.c + tools/auto_screenshots.py)
+set(PROJECT_VER "0.8.2")
 project(carcluster)

@@ -20,6 +20,7 @@
 #include "theme.h"
 #include "units.h"
 #include "limits.h"
+#include "screenshot.h"
 
 /* Renkler artık theme.c içinde global değişken — tema seçimine göre runtime'da
  * doldurulur. theme_apply(id) ui_build'den önce main.c'de çağrılır. */
@@ -749,7 +750,8 @@ void ui_set_ip(const char *ip)
  * Settings modal — long-press anywhere on screen → settings
  * ============================================================ */
 
-static lv_obj_t *s_settings_modal = NULL;
+static lv_obj_t *s_settings_modal   = NULL;
+static lv_obj_t *s_settings_tabview = NULL;   /* cmd_listener tab switching için */
 static lv_obj_t *s_btn_pause_lbl  = NULL;
 static lv_obj_t *s_theme_btns[THEME_COUNT] = {0};
 static lv_obj_t *s_theme_hint_lbl = NULL;
@@ -769,6 +771,7 @@ static void modal_close(lv_event_t *e)
         lv_obj_del(s_settings_modal);
         s_settings_modal = NULL;
         /* Tüm modal-içi pointer'ları temizle (LVGL widget'ları parent'la ölür) */
+        s_settings_tabview = NULL;
         for (int i = 0; i < THEME_COUNT; i++) s_theme_btns[i] = NULL;
         for (int i = 0; i < 2; i++) s_unit_btns[i] = NULL;
         s_theme_hint_lbl     = NULL;
@@ -1131,6 +1134,10 @@ static void build_tab_diag(lv_obj_t *t)
         lv_obj_set_style_text_font(warn, &lv_font_inter_14, 0);
         lv_obj_align(warn, LV_ALIGN_TOP_RIGHT, -6, 6);
     }
+
+    /* Screenshot butonu kaldırıldı — host'tan cmd_listener üzerinden
+     * "SHOT MAIN / SHOT MODAL <tab>" komutları ile otomatik tetiklenir.
+     * Bkz. tools/auto_screenshots.py */
 }
 
 static void show_settings_modal(void)
@@ -1162,6 +1169,7 @@ static void show_settings_modal(void)
 
     /* Tabview: 4 sekme — Trip / Display / Limits / Diag */
     lv_obj_t *tv = lv_tabview_create(panel, LV_DIR_TOP, 44);
+    s_settings_tabview = tv;     /* cmd_listener'ın tab switching için */
     lv_obj_set_size(tv, 740, 360);
     lv_obj_set_pos(tv, 0, 0);
     lv_obj_set_style_bg_color(tv, C_PANEL, 0);
@@ -1194,5 +1202,24 @@ static void ui_attach_long_press_handler(void)
     lv_obj_t *scr = lv_scr_act();
     lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(scr, on_screen_long_press, LV_EVENT_LONG_PRESSED, NULL);
+}
+
+/* External API — cmd_listener (auto-screenshot) için. Background task'lardan
+ * çağrılır, lvgl_port_lock dahili olarak alınır → re-entrancy yok. */
+void ui_cmd_show_modal(int tab_id)
+{
+    lvgl_port_lock();
+    if (!s_settings_modal) show_settings_modal();
+    if (s_settings_tabview && tab_id >= 0 && tab_id < 4) {
+        lv_tabview_set_act(s_settings_tabview, (uint16_t)tab_id, LV_ANIM_OFF);
+    }
+    lvgl_port_unlock();
+}
+
+void ui_cmd_close_modal(void)
+{
+    lvgl_port_lock();
+    if (s_settings_modal) modal_close(NULL);
+    lvgl_port_unlock();
 }
 
