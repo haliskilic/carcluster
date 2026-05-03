@@ -888,7 +888,7 @@ static void on_theme_pick(lv_event_t *e)
     persist_save_theme((uint8_t)id);
     update_theme_btn_styles(id);
     if (s_theme_hint_lbl) {
-        lv_label_set_text(s_theme_hint_lbl, "Restart to apply theme");
+        lv_label_set_text(s_theme_hint_lbl, "Restart to apply view");
         lv_obj_set_style_text_color(s_theme_hint_lbl, C_AMBER, 0);
     }
 }
@@ -1006,7 +1006,7 @@ static void build_tab_display(lv_obj_t *t)
 
     /* Theme satırı */
     lv_obj_t *theme_lbl = lv_label_create(t);
-    lv_label_set_text(theme_lbl, "THEME");
+    lv_label_set_text(theme_lbl, "VIEW");
     lv_obj_set_style_text_color(theme_lbl, C_DIM, 0);
     lv_obj_set_style_text_font(theme_lbl, &lv_font_inter_14, 0);
     lv_obj_align(theme_lbl, LV_ALIGN_TOP_MID, 0, 8);

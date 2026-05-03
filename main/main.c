@@ -106,7 +106,7 @@ void app_main(void)
     /* Tema palet — ui_build'den önce global C_* renkleri set'le */
     theme_id_t theme = (theme_id_t)persist_load_theme();
     theme_apply(theme);
-    ESP_LOGI(TAG, "Theme: %s (%d)", theme_name(theme), theme);
+    ESP_LOGI(TAG, "View: %s (%d)", theme_name(theme), theme);
 
     /* Unit + limits — ui_build içinde formatter ve gauge bandı için */
     unit_init();
