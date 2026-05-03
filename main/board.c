@@ -4,6 +4,8 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "board";
 
@@ -39,8 +41,52 @@ void board_ch422g_write(uint8_t set_mask, uint8_t clr_mask)
     if (s_ch422g_mutex) xSemaphoreGive(s_ch422g_mutex);
 }
 
+/* I²C bus recovery — soft reset (idf.py flash, esp_restart) sırasında bağlı
+ * slave (GT911 / CH422G) önceki transaction'da takılı kalmış olabilir. NXP
+ * UM10204 bus recovery: SDA released, SCL'i 9 kez toggle et — slave bekleme
+ * döngüsünden çıkar — sonra STOP üret.
+ *
+ * KRİTİK: önce gpio_set_level(HIGH) çağrılır, SONRA pin output yapılır.
+ * Aksi halde gpio_config()'in default level=0 değeri pin'i bir mikrosaniye
+ * LOW çekiyor — bu kısa pulse slave'leri yanlış START olarak yorumlatıp
+ * bus'u daha kötü duruma sokuyor. (V1 fix bunu yapıp touch'ı bozmuştu.) */
+static void i2c_bus_recover(void)
+{
+    /* 1) Output level register'ına önce 1 yaz — pin output yapılınca high gelir */
+    gpio_set_level(PIN_I2C_SDA, 1);
+    gpio_set_level(PIN_I2C_SCL, 1);
+
+    /* 2) Pull-up + open-drain output mode — external pull-up'lar zaten var,
+     *    iç pull-up backup. OD modunda HIGH = high-Z, LOW = aktif sürülür. */
+    gpio_set_pull_mode(PIN_I2C_SDA, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_I2C_SCL, GPIO_PULLUP_ONLY);
+    gpio_set_direction(PIN_I2C_SDA, GPIO_MODE_OUTPUT_OD);
+    gpio_set_direction(PIN_I2C_SCL, GPIO_MODE_OUTPUT_OD);
+    esp_rom_delay_us(10);
+
+    /* 3) SCL 9 puls — slave incomplete transaction'dan çıkar (SDA released kalır) */
+    for (int i = 0; i < 9; i++) {
+        gpio_set_level(PIN_I2C_SCL, 0);
+        esp_rom_delay_us(5);
+        gpio_set_level(PIN_I2C_SCL, 1);
+        esp_rom_delay_us(5);
+    }
+
+    /* 4) STOP condition: SDA LOW iken SCL HIGH iken SDA → HIGH transition */
+    gpio_set_level(PIN_I2C_SDA, 0);
+    esp_rom_delay_us(5);
+    gpio_set_level(PIN_I2C_SCL, 1);
+    esp_rom_delay_us(5);
+    gpio_set_level(PIN_I2C_SDA, 1);
+    esp_rom_delay_us(5);
+
+    ESP_LOGI(TAG, "I2C bus recovery done");
+}
+
 static void i2c_init(void)
 {
+    i2c_bus_recover();
+
     i2c_config_t cfg = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = PIN_I2C_SDA, .scl_io_num = PIN_I2C_SCL,
