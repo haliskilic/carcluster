@@ -18,6 +18,7 @@
 #include "limits.h"
 #include "cmd_listener.h"
 #include "wifi.h"
+#include "splash.h"
 #include "idle.h"
 
 static const char *TAG = "carcluster";
@@ -133,10 +134,26 @@ void app_main(void)
     /* Şimdi LVGL + VSYNC ISR — handle'lar hazır */
     lvgl_port_init();
 
+    cmd_listener_start();
+
+    /* Splash + cluster build — TEK lvgl_port_lock altında. lvgl_port_lock
+     * lv_timer_handler'ı durdurur, render olmaz. ui_build cluster widget'larını
+     * yarat, splash_show splash widget'larını yarat (son child = üstte çizilir).
+     * Unlock sonrası ilk frame: splash kapsayan cluster'ın üstünde. Böylece
+     * kullanıcı cluster'ı build sırasında bir an bile göremez. */
     lvgl_port_lock();
     ui_build();
     ui_refresh();
     ui_set_ip("DEMO");
+    splash_show();           /* en son yaratıldı = en üstte render edilir */
+    lvgl_port_unlock();
+
+    /* Splash 1500 ms — branding + boot uyarısı süresi (cluster zaten arkada
+     * hazır, kapanışı atomik). */
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    lvgl_port_lock();
+    splash_hide();           /* atomik reveal: tek frame'de cluster görünür */
     lvgl_port_unlock();
 
     /* Persistence autosave 30 sn'de bir total_km'i NVS'e yazar */
@@ -151,10 +168,8 @@ void app_main(void)
     /* Idle sleep — demo paused + 30s no touch → backlight off, touch wake */
     idle_init();
 
-    /* Auto-screenshot + WiFi/OTA debug interface — host'tan komut dinler */
-    cmd_listener_start();
-
-    /* WiFi STA — credentials NVS'te varsa otomatik bağlan, yoksa pas geç */
+    /* WiFi STA — credentials NVS'te varsa otomatik bağlan, yoksa pas geç.
+     * cmd_listener splash sırasında zaten başlatıldı. */
     wifi_init();
 
     ESP_LOGI(TAG, "Ready.");
