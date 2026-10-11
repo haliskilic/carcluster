@@ -1,5 +1,7 @@
 # carcluster
 
+[![Lisans: AGPL-3.0](https://img.shields.io/badge/Lisans-AGPL--3.0-blue.svg)](LICENSE) [![Ticari lisans](https://img.shields.io/badge/Ticari-lisans%20mevcut-green.svg)](COMMERCIAL_LICENSE.md) [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/haliskilic)
+
 ESP32-S3 + 7" 800×480 RGB TFT panel için **profesyonel araç gösterge paneli (instrument cluster)** — animasyonlu telltale'ler, smooth gösterge ibreleri, trip computer, NVS-persisted odometer, GT911 dokunmatik ayar paneli.
 
 > **Donanım**: Waveshare ESP32-S3-Touch-LCD-7 V1.2  
@@ -592,3 +594,22 @@ Community projeler (PCLK config + GT911 timing):
 - [iamfaraz/Waveshare_ST7262_LVGL](https://github.com/iamfaraz/Waveshare_ST7262_LVGL)
 - [inytar/waveshare-esp32-s3-touch-lcd-7-esphome](https://github.com/inytar/waveshare-esp32-s3-touch-lcd-7-esphome)
 - [bennydiamond/esphome_lvgl_hmi_garage](https://github.com/bennydiamond/esphome_lvgl_hmi_garage)
+
+---
+
+## Lisans
+
+carcluster **çift lisanslıdır**:
+
+- **Açık kaynak — [GNU AGPL-3.0](LICENSE):** kullanmak, incelemek, değiştirmek ve paylaşmak serbesttir. Dağıtırsan ya da değiştirilmiş bir sürümü ağ servisi olarak çalıştırırsan, tüm kaynak kodunu AGPL-3.0 ile sunman gerekir.
+- **Ticari lisans:** AGPL-3.0 yükümlülükleri olmadan kapalı kaynak ürün, cihaz ya da SaaS için — bkz. [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) veya **mail@haliskilic.com.tr**.
+
+LVGL (MIT) ve ESP-IDF (Apache-2.0) derleme sırasında indirilir ve kendi lisanslarını korur.
+
+Katkılar memnuniyetle karşılanır! İlk pull request'inde tek seferlik bir [Katkıcı Lisans Sözleşmesi (CLA)](https://gist.github.com/haliskilic/7a7fdcd355f54d1db6943959d7b76823) imzalaman istenir; katkının telif hakkı sende kalır.
+
+Telif © 2026 Halis KILIÇ.
+
+## Projeyi destekle
+
+carcluster işine yarıyorsa **[GitHub Sponsors üzerinden destek olmayı ❤️](https://github.com/sponsors/haliskilic)** düşünebilirsin — sponsorluklar test donanımını ve projenin bakımına ayrılan zamanı karşılıyor.
